@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:http/http.dart' as http;
+const String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
 class GreenNotePage extends StatefulWidget {
   @override
@@ -15,6 +17,7 @@ class _GreenNotePageState extends State<GreenNotePage> {
 
   Map<String, double> scores = {};
   List<String> topics = [];
+
 
   late String currentDate;
   late String currentKey;
@@ -88,37 +91,26 @@ class _GreenNotePageState extends State<GreenNotePage> {
   }
 
   Future<void> _loadCurrentNote() async {
-    final prefs = await SharedPreferences.getInstance();
-    currentKey = prefs.getString('green_note_current') ?? '';
-    if (!currentKey.startsWith('green_history_$currentDate')) {
-      int index = 1;
-      while (prefs.containsKey('green_history_${currentDate} $index')) {
-        index++;
-      }
-      currentKey = 'green_history_${currentDate} $index';
-      await prefs.setString('green_note_current', currentKey);
-    }
+    final response = await http.get(Uri.parse('$backendUrl/green_notes/$currentDate'));
 
-    final stored = prefs.getString(currentKey);
-    if (stored != null) {
-      final data = jsonDecode(stored);
-      final List<dynamic> goodThings = data['goodThings'] ?? [];
-      final String improvement = data['improvement'] ?? '';
-      final Map<String, dynamic> loadedScores =
-          Map<String, dynamic>.from(data['scores'] ?? {});
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      _goodThingsControllers[0].text = data['good_1'] ?? '';
+      _goodThingsControllers[1].text = data['good_2'] ?? '';
+      _goodThingsControllers[2].text = data['good_3'] ?? '';
+      _improvementController.text = data['improve'] ?? '';
 
-      for (int i = 0; i < 3; i++) {
-        _goodThingsControllers[i].text = i < goodThings.length ? goodThings[i] : '';
-      }
-      _improvementController.text = improvement;
-      loadedScores.forEach((k, v) {
-        if (scores.containsKey(k)) {
-          scores[k] = v.toDouble();
+      for (var score in data['scores']) {
+        scores[score['category']] = (score['score'] ?? 3).toDouble();
+        if (!topics.contains(score['category'])) {
+          topics.add(score['category']);
         }
-      });
+      }
     }
+
     setState(() {});
   }
+
 
   Future<void> _saveCurrentData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -131,13 +123,23 @@ class _GreenNotePageState extends State<GreenNotePage> {
   }
 
   Future<void> _saveToHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final scoreData = {for (var entry in scores.entries) entry.key: entry.value.toInt()};
-    await prefs.setString(currentKey, jsonEncode({
-      'goodThings': _goodThingsControllers.map((c) => c.text).toList(),
-      'improvement': _improvementController.text,
-      'scores': scoreData
-    }));
+    final data = {
+      'date': currentDate,
+      'good_1': _goodThingsControllers[0].text,
+      'good_2': _goodThingsControllers[1].text,
+      'good_3': _goodThingsControllers[2].text,
+      'improve': _improvementController.text,
+      'scores': scores.entries.map((e) => {
+        'category': e.key,
+        'score': e.value.toInt()
+      }).toList()
+    };
+
+    await http.post(
+      Uri.parse('$backendUrl/green_notes'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    );
   }
 
   void _addRatingTopic() {

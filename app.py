@@ -145,6 +145,34 @@ def get_green_note(date):
         'good_1': row[1], 'good_2': row[2], 'good_3': row[3], 'improve': row[4],
         'scores': scores
     })
+@app.route('/green_notes_all', methods=['GET'])
+def get_all_green_notes():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve,
+               json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
+        FROM green_notes gn
+        LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
+        GROUP BY gn.id
+        ORDER BY gn.date DESC
+    """)
+    notes = []
+    for row in cur.fetchall():
+        notes.append({
+            'date': row[1],
+            'good_1': row[2],
+            'good_2': row[3],
+            'good_3': row[4],
+            'improve': row[5],
+            'scores': row[6]
+        })
+
+    cur.close()
+    conn.close()
+    return jsonify(notes)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
