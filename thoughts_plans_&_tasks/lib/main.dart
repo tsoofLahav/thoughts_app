@@ -11,6 +11,7 @@ import 'daily_tasks_page.dart';
 import 'history_graph_page.dart';
 import 'topic_manager.dart';
 import 'control_page.dart';
+import 'green_note_history_page.dart';
 
 void main() {
   runApp(ThoughtOrganizerApp());
@@ -39,6 +40,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     'assets/tasks.png',
     'assets/control.png',
     'assets/data.png',
+    'assets/history.png',
     'assets/directories.png',
   ];
 
@@ -291,6 +293,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                         }
                         if (iconPath == 'assets/data.png') {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => HistoryPage()));
+                        }
+                        if (iconPath == 'assets/history.png') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => GreenNoteHistoryPage()));
                         }
                         if (iconPath == 'assets/control.png') {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => ControlPage()));

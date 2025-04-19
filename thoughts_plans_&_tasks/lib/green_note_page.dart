@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
+
 const String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
 class GreenNotePage extends StatefulWidget {
@@ -16,37 +16,22 @@ class _GreenNotePageState extends State<GreenNotePage> {
   final TextEditingController _improvementController = TextEditingController();
 
   Map<String, double> scores = {};
-  List<String> topics = [];
-
+  List<String> topics = ['כושר', 'שיער', 'ראייה', 'תקשורת', 'ניהול'];
 
   late String currentDate;
-  late String currentKey;
   Timer? _midnightTimer;
 
   @override
   void initState() {
     super.initState();
     currentDate = _getTodayDate();
-    _loadTopics().then((_) => _loadCurrentNote());
+    _loadCurrentNote();
     _scheduleMidnightSave();
   }
 
   String _getTodayDate() {
     final now = DateTime.now();
     return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-  }
-
-  Future<void> _loadTopics() async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList('green_note_topics') ??
-        ['כושר', 'שיער', 'ראייה', 'תקשורת', 'ניהול'];
-    topics = stored;
-    scores = {for (var t in stored) t: 3.0};
-  }
-
-  Future<void> _saveTopics() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('green_note_topics', topics);
   }
 
   void _scheduleMidnightSave() {
@@ -60,7 +45,6 @@ class _GreenNotePageState extends State<GreenNotePage> {
   void _autoSaveAndReset() async {
     await _saveToHistory();
     _resetNote();
-    await _createNewVersion();
     _scheduleMidnightSave();
   }
 
@@ -76,50 +60,29 @@ class _GreenNotePageState extends State<GreenNotePage> {
   Future<void> _saveNoteManually() async {
     await _saveToHistory();
     _resetNote();
-    await _createNewVersion();
-  }
-
-  Future<void> _createNewVersion() async {
-    final prefs = await SharedPreferences.getInstance();
-    int index = 1;
-    while (prefs.containsKey('green_history_${currentDate} $index')) {
-      index++;
-    }
-    currentKey = 'green_history_${currentDate} $index';
-    await prefs.setString('green_note_current', currentKey);
-    await prefs.remove(currentKey); // ensure fresh state
   }
 
   Future<void> _loadCurrentNote() async {
-    final response = await http.get(Uri.parse('$backendUrl/green_notes/$currentDate'));
+    try {
+      final response = await http.get(Uri.parse('$backendUrl/green_notes/$currentDate'));
+      if (response.statusCode == 200 && response.body != 'null') {
+        final data = jsonDecode(response.body);
+        _goodThingsControllers[0].text = data['good_1'] ?? '';
+        _goodThingsControllers[1].text = data['good_2'] ?? '';
+        _goodThingsControllers[2].text = data['good_3'] ?? '';
+        _improvementController.text = data['improve'] ?? '';
 
-    if (response.statusCode == 200 && response.body != 'null') {
-      final data = jsonDecode(response.body);
-      _goodThingsControllers[0].text = data['good_1'] ?? '';
-      _goodThingsControllers[1].text = data['good_2'] ?? '';
-      _goodThingsControllers[2].text = data['good_3'] ?? '';
-      _improvementController.text = data['improve'] ?? '';
-
-      for (var score in data['scores']) {
-        scores[score['category']] = (score['score'] ?? 3).toDouble();
-        if (!topics.contains(score['category'])) {
-          topics.add(score['category']);
+        for (var score in data['scores']) {
+          scores[score['category']] = (score['score'] ?? 3).toDouble();
+          if (!topics.contains(score['category'])) {
+            topics.add(score['category']);
+          }
         }
+        setState(() {});
       }
+    } catch (e) {
+      print('Error loading note: $e');
     }
-
-    setState(() {});
-  }
-
-
-  Future<void> _saveCurrentData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = {
-      'goodThings': _goodThingsControllers.map((c) => c.text).toList(),
-      'improvement': _improvementController.text,
-      'scores': scores,
-    };
-    await prefs.setString(currentKey, jsonEncode(data));
   }
 
   Future<void> _saveToHistory() async {
@@ -135,11 +98,15 @@ class _GreenNotePageState extends State<GreenNotePage> {
       }).toList()
     };
 
-    await http.post(
-      Uri.parse('$backendUrl/green_notes'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(data),
-    );
+    try {
+      await http.post(
+        Uri.parse('$backendUrl/green_notes'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
+    } catch (e) {
+      print('Error saving note: $e');
+    }
   }
 
   void _addRatingTopic() {
@@ -161,8 +128,6 @@ class _GreenNotePageState extends State<GreenNotePage> {
                 topics.add(topic.trim());
                 scores[topic.trim()] = 3.0;
               });
-              _saveTopics();
-              _saveCurrentData();
               Navigator.pop(context);
             },
             child: Text('הוסף'),
@@ -177,8 +142,6 @@ class _GreenNotePageState extends State<GreenNotePage> {
       topics.remove(topic);
       scores.remove(topic);
     });
-    _saveTopics();
-    _saveCurrentData();
   }
 
   @override
@@ -198,7 +161,7 @@ class _GreenNotePageState extends State<GreenNotePage> {
       child: Scaffold(
         backgroundColor: Colors.lightGreen[100],
         appBar: AppBar(
-          title: Text('פתק ירוק - $currentKey'),
+          title: Text('פתק ירוק - $currentDate'),
           actions: [
             IconButton(
               icon: Icon(Icons.save),
@@ -221,14 +184,12 @@ class _GreenNotePageState extends State<GreenNotePage> {
               for (int i = 0; i < 3; i++)
                 TextField(
                   controller: _goodThingsControllers[i],
-                  onChanged: (_) => _saveCurrentData(),
                   decoration: InputDecoration(hintText: '${i + 1}.'),
                 ),
               SizedBox(height: 20),
               Text('דבר אחד לשיפור:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               TextField(
                 controller: _improvementController,
-                onChanged: (_) => _saveCurrentData(),
               ),
               SizedBox(height: 30),
               Text('נושאי דירוג:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -257,7 +218,6 @@ class _GreenNotePageState extends State<GreenNotePage> {
                         setState(() {
                           scores[topic] = val;
                         });
-                        _saveCurrentData();
                       },
                     )
                   ],
