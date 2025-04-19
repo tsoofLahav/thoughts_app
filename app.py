@@ -92,29 +92,15 @@ def save_green_note():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Check if a note already exists for this date
-    cur.execute("SELECT id FROM green_notes WHERE date = %s", (data['date'],))
-    existing = cur.fetchone()
-
-    if existing:
-        note_id = existing[0]
-        cur.execute("""
-            UPDATE green_notes
-            SET good_1=%s, good_2=%s, good_3=%s, improve=%s
-            WHERE id = %s
-        """, (
-            data['good_1'], data['good_2'], data['good_3'], data['improve'], note_id
-        ))
-        cur.execute("DELETE FROM green_note_scores WHERE note_id = %s", (note_id,))
-    else:
-        cur.execute("""
-            INSERT INTO green_notes (date, good_1, good_2, good_3, improve)
-            VALUES (%s, %s, %s, %s, %s) RETURNING id
-        """, (
-            data['date'], data['good_1'], data['good_2'],
-            data['good_3'], data['improve']
-        ))
-        note_id = cur.fetchone()[0]
+    # Always insert a new note (new version)
+    cur.execute("""
+        INSERT INTO green_notes (date, good_1, good_2, good_3, improve)
+        VALUES (%s, %s, %s, %s, %s) RETURNING id
+    """, (
+        data['date'], data['good_1'], data['good_2'],
+        data['good_3'], data['improve']
+    ))
+    note_id = cur.fetchone()[0]
 
     for score in data['scores']:
         cur.execute("""
@@ -127,14 +113,22 @@ def save_green_note():
     conn.close()
     return {'status': 'green note saved'}
 
+
 @app.route('/green_notes/<date>', methods=['GET'])
-def get_green_note(date):
+def get_latest_note_by_date(date):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, good_1, good_2, good_3, improve FROM green_notes WHERE date = %s", (date,))
+    cur.execute("""
+        SELECT id, good_1, good_2, good_3, improve
+        FROM green_notes
+        WHERE date = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (date,))
     row = cur.fetchone()
     if not row:
         return jsonify(None)
+
     note_id = row[0]
     cur.execute("SELECT category, score FROM green_note_scores WHERE note_id = %s", (note_id,))
     scores = [{'category': r[0], 'score': r[1]} for r in cur.fetchall()]
@@ -145,22 +139,26 @@ def get_green_note(date):
         'good_1': row[1], 'good_2': row[2], 'good_3': row[3], 'improve': row[4],
         'scores': scores
     })
-@app.route('/green_notes_all', methods=['GET'])
-def get_all_green_notes():
+
+@app.route('/green_notes/today/<date>', methods=['GET'])
+def get_latest_note_for_today(date):
     conn = get_db_connection()
     cur = conn.cursor()
-
     cur.execute("""
         SELECT gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve,
                json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
         FROM green_notes gn
         LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
+        WHERE gn.date = %s
         GROUP BY gn.id
-        ORDER BY gn.date DESC
-    """)
-    notes = []
-    for row in cur.fetchall():
-        notes.append({
+        ORDER BY gn.created_at DESC
+        LIMIT 1
+    """, (date,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if row:
+        return jsonify({
             'date': row[1],
             'good_1': row[2],
             'good_2': row[3],
@@ -168,10 +166,7 @@ def get_all_green_notes():
             'improve': row[5],
             'scores': row[6]
         })
-
-    cur.close()
-    conn.close()
-    return jsonify(notes)
+    return jsonify(None)
 
 
 if __name__ == '__main__':
