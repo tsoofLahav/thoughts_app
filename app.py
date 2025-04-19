@@ -91,19 +91,37 @@ def save_green_note():
     data = request.get_json()
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO green_notes (date, good_1, good_2, good_3, improve)
-        VALUES (%s, %s, %s, %s, %s) RETURNING id
-    """, (
-        data['date'], data['good_1'], data['good_2'],
-        data['good_3'], data['improve']
-    ))
-    note_id = cur.fetchone()[0]
+
+    # Check if a note already exists for this date
+    cur.execute("SELECT id FROM green_notes WHERE date = %s", (data['date'],))
+    existing = cur.fetchone()
+
+    if existing:
+        note_id = existing[0]
+        cur.execute("""
+            UPDATE green_notes
+            SET good_1=%s, good_2=%s, good_3=%s, improve=%s
+            WHERE id = %s
+        """, (
+            data['good_1'], data['good_2'], data['good_3'], data['improve'], note_id
+        ))
+        cur.execute("DELETE FROM green_note_scores WHERE note_id = %s", (note_id,))
+    else:
+        cur.execute("""
+            INSERT INTO green_notes (date, good_1, good_2, good_3, improve)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (
+            data['date'], data['good_1'], data['good_2'],
+            data['good_3'], data['improve']
+        ))
+        note_id = cur.fetchone()[0]
+
     for score in data['scores']:
         cur.execute("""
             INSERT INTO green_note_scores (note_id, category, score)
             VALUES (%s, %s, %s)
         """, (note_id, score['category'], score['score']))
+
     conn.commit()
     cur.close()
     conn.close()
