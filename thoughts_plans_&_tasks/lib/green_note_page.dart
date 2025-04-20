@@ -90,11 +90,14 @@ class _GreenNotePageState extends State<GreenNotePage> {
       final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
       if (res.statusCode == 200) {
         final list = List<String>.from(jsonDecode(res.body))
-          .where((s) => s.startsWith(currentDate))
-          .toList();
+            .where((s) => s.startsWith(currentDate))
+            .toList();
         if (list.isNotEmpty) {
-          currentSignature = list.last;
-          await _loadVersion(currentSignature!);
+          final latest = list.last;
+          final success = await _loadVersion(latest);
+          if (success) {
+            setState(() => currentSignature = latest); // ✅ set headline after successful load
+          }
         }
       }
     } catch (e) {
@@ -102,7 +105,8 @@ class _GreenNotePageState extends State<GreenNotePage> {
     }
   }
 
-  Future<void> _loadVersion(String signature) async {
+
+  Future<bool> _loadVersion(String signature) async {
     try {
       final res = await http.get(Uri.parse('$backendUrl/green_notes/version/$signature'));
       if (res.statusCode == 200 && res.body != 'null') {
@@ -113,14 +117,15 @@ class _GreenNotePageState extends State<GreenNotePage> {
           _goodThingsControllers[2].text = data['good_3'] ?? '';
           _improvementController.text = data['improve'] ?? '';
           scores = {
-            for (var score in data['scores'])
-              score['category']: (score['score'] ?? 3).toDouble()
+            for (var score in data['scores']) score['category']: (score['score'] ?? 3).toDouble()
           };
         });
+        return true;
       }
     } catch (e) {
       print('Error loading version: $e');
     }
+    return false;
   }
 
   Future<void> _saveCurrentFile() async {
@@ -197,6 +202,37 @@ class _GreenNotePageState extends State<GreenNotePage> {
         appBar: AppBar(
           title: Text('פתק ירוק - ${currentSignature ?? ""}'),
           actions: [
+            IconButton(
+              icon: Icon(Icons.add),
+              tooltip: 'הוסף נושא לדירוג',
+              onPressed: () {
+                String newTopic = '';
+                showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: Text('הוסף נושא לדירוג'),
+                    content: TextField(
+                      onChanged: (value) => newTopic = value,
+                      textDirection: TextDirection.rtl,
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
+                      TextButton(
+                        onPressed: () {
+                          if (newTopic.trim().isEmpty) return;
+                          setState(() {
+                            topics.add(newTopic.trim());
+                            scores[newTopic.trim()] = 3.0;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: Text('הוסף'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: Icon(Icons.save),
               onPressed: () async {

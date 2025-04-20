@@ -87,9 +87,9 @@ def save_entry():
     conn.close()
     return {'status': 'entry saved'}
 
-# ---------------- GREEN NOTE ----------------
+# ---------------- GREEN NOTE SYSTEM ----------------
 
-# 1. Save list of range parameters (e.g., topics like תזונה, התנהלות...)
+# Save or update list of topics
 @app.route('/green_note_topics', methods=['POST'])
 def save_green_note_topics():
     data = request.get_json()
@@ -104,6 +104,7 @@ def save_green_note_topics():
     conn.close()
     return jsonify({'status': 'topics saved'})
 
+# Get current topic list
 @app.route('/green_note_topics', methods=['GET'])
 def get_green_note_topics():
     conn = get_db_connection()
@@ -114,7 +115,7 @@ def get_green_note_topics():
     conn.close()
     return jsonify(topics)
 
-# 2. Save a green note version to a given signature (overwrite if exists)
+# Save or overwrite a green note version
 @app.route('/green_notes', methods=['POST'])
 def save_green_note():
     data = request.get_json()
@@ -144,7 +145,7 @@ def save_green_note():
     conn.close()
     return jsonify({'status': 'note saved'})
 
-# 3. Get all versions (signatures) for history
+# Get all note signatures (for determining latest version per day)
 @app.route('/green_notes/signatures', methods=['GET'])
 def get_all_green_note_signatures():
     conn = get_db_connection()
@@ -155,7 +156,7 @@ def get_all_green_note_signatures():
     conn.close()
     return jsonify(signatures)
 
-# 4. Get data for a specific file version
+# Get a note by its signature
 @app.route('/green_notes/version/<signature>', methods=['GET'])
 def get_green_note_by_signature(signature):
     conn = get_db_connection()
@@ -182,7 +183,6 @@ def get_green_note_by_signature(signature):
         'improve': row[5],
         'scores': scores
     })
-
 
 
 if __name__ == '__main__':
