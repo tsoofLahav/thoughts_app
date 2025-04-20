@@ -173,34 +173,34 @@ def get_latest_note_for_today(date):
     return jsonify(None)
 
 @app.route('/green_notes_unsaved/<date>', methods=['GET'])
-def get_unsaved_note(date):
+def get_latest_note_for_today(date):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve,
+        SELECT gn.id, gn.date, gn.is_final, gn.good_1, gn.good_2, gn.good_3, gn.improve,
                json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
         FROM green_notes gn
         LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
-        WHERE gn.date = %s AND gn.is_final = false
-        GROUP BY gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve
+        WHERE gn.date = %s
+        GROUP BY gn.id, gn.date, gn.is_final, gn.good_1, gn.good_2, gn.good_3, gn.improve
         ORDER BY gn.created_at DESC
         LIMIT 1
     """, (date,))
     row = cur.fetchone()
     cur.close()
     conn.close()
+
     if row:
         return jsonify({
-            'key': f"{row[1]} {row[0]}",  # Use date + id
+            'key': f"{row[1]} {'(final)' if row[2] else '(draft)'} {row[0]}",
             'date': row[1],
-            'good_1': row[2],
-            'good_2': row[3],
-            'good_3': row[4],
-            'improve': row[5],
-            'scores': row[6]
+            'good_1': row[3],
+            'good_2': row[4],
+            'good_3': row[5],
+            'improve': row[6],
+            'scores': row[7]
         })
     return jsonify(None)
-
 
 
 
