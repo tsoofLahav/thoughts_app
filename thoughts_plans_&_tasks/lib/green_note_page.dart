@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 const String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
@@ -14,11 +14,10 @@ class _GreenNotePageState extends State<GreenNotePage> {
   final List<TextEditingController> _goodThingsControllers =
       List.generate(3, (_) => TextEditingController());
   final TextEditingController _improvementController = TextEditingController();
-
   Map<String, double> scores = {};
   List<String> topics = ['כושר', 'שיער', 'ראייה', 'תקשורת', 'ניהול'];
-
   late String currentDate;
+  String? currentKey;
   Timer? _midnightTimer;
 
   @override
@@ -38,56 +37,27 @@ class _GreenNotePageState extends State<GreenNotePage> {
     final now = DateTime.now();
     final nextMidnight = DateTime(now.year, now.month, now.day + 1);
     final durationUntilMidnight = nextMidnight.difference(now);
-
     _midnightTimer = Timer(durationUntilMidnight, _autoSaveAndReset);
   }
 
   void _autoSaveAndReset() async {
-    await _saveToHistory();
+    await _saveNote(isFinal: true);
     _resetNote();
     _scheduleMidnightSave();
   }
 
   void _resetNote() {
-    for (final c in _goodThingsControllers) {
-      c.clear();
-    }
+    for (final c in _goodThingsControllers) c.clear();
     _improvementController.clear();
-    scores.updateAll((key, value) => 3.0);
-    setState(() {});
+    scores.updateAll((key, _) => 3.0);
+    setState(() => currentKey = null);
   }
 
-  Future<void> _saveNoteManually() async {
-    await _saveToHistory();
-    _resetNote();
-  }
-
-  Future<void> _loadCurrentNote() async {
-    try {
-      final response = await http.get(Uri.parse('$backendUrl/green_notes/$currentDate'));
-      if (response.statusCode == 200 && response.body != 'null') {
-        final data = jsonDecode(response.body);
-        _goodThingsControllers[0].text = data['good_1'] ?? '';
-        _goodThingsControllers[1].text = data['good_2'] ?? '';
-        _goodThingsControllers[2].text = data['good_3'] ?? '';
-        _improvementController.text = data['improve'] ?? '';
-
-        for (var score in data['scores']) {
-          scores[score['category']] = (score['score'] ?? 3).toDouble();
-          if (!topics.contains(score['category'])) {
-            topics.add(score['category']);
-          }
-        }
-        setState(() {});
-      }
-    } catch (e) {
-      print('Error loading note: $e');
-    }
-  }
-
-  Future<void> _saveToHistory() async {
+  Future<void> _saveNote({required bool isFinal}) async {
     final data = {
       'date': currentDate,
+      'key': currentKey,
+      'is_final': isFinal,
       'good_1': _goodThingsControllers[0].text,
       'good_2': _goodThingsControllers[1].text,
       'good_3': _goodThingsControllers[2].text,
@@ -99,13 +69,38 @@ class _GreenNotePageState extends State<GreenNotePage> {
     };
 
     try {
-      await http.post(
+      final res = await http.post(
         Uri.parse('$backendUrl/green_notes'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(data),
       );
+      final body = jsonDecode(res.body);
+      setState(() => currentKey = body['key']);
     } catch (e) {
       print('Error saving note: $e');
+    }
+  }
+
+  Future<void> _loadCurrentNote() async {
+    try {
+      final response = await http.get(Uri.parse('$backendUrl/green_notes_unsaved/$currentDate'));
+      if (response.statusCode == 200 && response.body != 'null') {
+        final data = jsonDecode(response.body);
+        currentKey = data['key'];
+        _goodThingsControllers[0].text = data['good_1'] ?? '';
+        _goodThingsControllers[1].text = data['good_2'] ?? '';
+        _goodThingsControllers[2].text = data['good_3'] ?? '';
+        _improvementController.text = data['improve'] ?? '';
+        for (var score in data['scores']) {
+          scores[score['category']] = (score['score'] ?? 3).toDouble();
+          if (!topics.contains(score['category'])) {
+            topics.add(score['category']);
+          }
+        }
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error loading note: $e');
     }
   }
 
@@ -147,9 +142,7 @@ class _GreenNotePageState extends State<GreenNotePage> {
   @override
   void dispose() {
     _midnightTimer?.cancel();
-    for (final controller in _goodThingsControllers) {
-      controller.dispose();
-    }
+    for (final c in _goodThingsControllers) c.dispose();
     _improvementController.dispose();
     super.dispose();
   }
@@ -161,12 +154,12 @@ class _GreenNotePageState extends State<GreenNotePage> {
       child: Scaffold(
         backgroundColor: Colors.lightGreen[100],
         appBar: AppBar(
-          title: Text('פתק ירוק - $currentDate'),
+          title: Text('פתק ירוק - ${currentKey ?? "טויטה"}'),
           actions: [
             IconButton(
               icon: Icon(Icons.save),
               tooltip: 'שמור פתק ידנית',
-              onPressed: _saveNoteManually,
+              onPressed: () => _saveNote(isFinal: true),
             ),
             IconButton(
               icon: Icon(Icons.add),
@@ -188,9 +181,7 @@ class _GreenNotePageState extends State<GreenNotePage> {
                 ),
               SizedBox(height: 20),
               Text('דבר אחד לשיפור:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextField(
-                controller: _improvementController,
-              ),
+              TextField(controller: _improvementController),
               SizedBox(height: 30),
               Text('נושאי דירוג:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ...topics.map((topic) {
@@ -215,9 +206,7 @@ class _GreenNotePageState extends State<GreenNotePage> {
                       label: scores[topic]?.toInt().toString(),
                       activeColor: Colors.green[900],
                       onChanged: (val) {
-                        setState(() {
-                          scores[topic] = val;
-                        });
+                        setState(() => scores[topic] = val);
                       },
                     )
                   ],

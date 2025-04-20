@@ -85,7 +85,8 @@ def save_entry():
     conn.close()
     return {'status': 'entry saved'}
 
-# ---------- GREEN NOTES ----------
+# ---------- GREEN NOTE ----------
+
 @app.route('/green_notes', methods=['POST'])
 def save_green_note():
     data = request.get_json()
@@ -94,8 +95,8 @@ def save_green_note():
 
     # Always insert a new note (new version)
     cur.execute("""
-        INSERT INTO green_notes (date, good_1, good_2, good_3, improve)
-        VALUES (%s, %s, %s, %s, %s) RETURNING id
+        INSERT INTO green_notes (date, good_1, good_2, good_3, improve, created_at)
+        VALUES (%s, %s, %s, %s, %s, NOW()) RETURNING id
     """, (
         data['date'], data['good_1'], data['good_2'],
         data['good_3'], data['improve']
@@ -140,6 +141,7 @@ def get_latest_note_by_date(date):
         'scores': scores
     })
 
+
 @app.route('/green_notes/today/<date>', methods=['GET'])
 def get_latest_note_for_today(date):
     conn = get_db_connection()
@@ -167,6 +169,7 @@ def get_latest_note_for_today(date):
             'scores': row[6]
         })
     return jsonify(None)
+
 
 
 if __name__ == '__main__':
