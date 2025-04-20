@@ -15,16 +15,17 @@ class _GreenNotePageState extends State<GreenNotePage> {
       List.generate(3, (_) => TextEditingController());
   final TextEditingController _improvementController = TextEditingController();
   Map<String, double> scores = {};
-  List<String> topics = ['כושר', 'שיער', 'ראייה', 'תקשורת', 'ניהול'];
+  List<String> topics = [];
 
   late String currentDate;
-  String? currentKey;
+  String? currentSignature;
   Timer? _midnightTimer;
 
   @override
   void initState() {
     super.initState();
     currentDate = _getTodayDate();
+    _loadTopics();
     _loadLatestVersion();
     _scheduleMidnightSave();
   }
@@ -41,11 +42,12 @@ class _GreenNotePageState extends State<GreenNotePage> {
     _midnightTimer = Timer(durationUntilMidnight, _handleMidnight);
   }
 
-  void _handleMidnight() async {
-    await _saveNote(isFinal: true);
-    await _createNewEmptyVersion();
-    currentDate = _getTodayDate();
+  Future<void> _handleMidnight() async {
+    await _saveCurrentFile();
+    await _saveTopics();
+    await _createNewVersion();
     _resetFields();
+    currentDate = _getTodayDate();
     _scheduleMidnightSave();
   }
 
@@ -53,36 +55,78 @@ class _GreenNotePageState extends State<GreenNotePage> {
     for (final c in _goodThingsControllers) c.clear();
     _improvementController.clear();
     scores = {for (var t in topics) t: 3.0};
-    setState(() => currentKey = null);
+    setState(() => currentSignature = null);
+  }
+
+  Future<void> _loadTopics() async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/green_note_topics'));
+      if (res.statusCode == 200) {
+        final list = List<String>.from(jsonDecode(res.body));
+        setState(() {
+          topics = list;
+          scores = {for (var t in topics) t: 3.0};
+        });
+      }
+    } catch (e) {
+      print('Error loading topics: $e');
+    }
+  }
+
+  Future<void> _saveTopics() async {
+    try {
+      await http.post(
+        Uri.parse('$backendUrl/green_note_topics'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'topics': topics}),
+      );
+    } catch (e) {
+      print('Error saving topics: $e');
+    }
   }
 
   Future<void> _loadLatestVersion() async {
     try {
-      final res = await http.get(Uri.parse('$backendUrl/green_notes_unsaved/$currentDate'));
+      final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
+      if (res.statusCode == 200) {
+        final list = List<String>.from(jsonDecode(res.body))
+          .where((s) => s.startsWith(currentDate))
+          .toList();
+        if (list.isNotEmpty) {
+          currentSignature = list.last;
+          await _loadVersion(currentSignature!);
+        }
+      }
+    } catch (e) {
+      print('Load version error: $e');
+    }
+  }
+
+  Future<void> _loadVersion(String signature) async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/green_notes/version/$signature'));
       if (res.statusCode == 200 && res.body != 'null') {
         final data = jsonDecode(res.body);
         setState(() {
-          currentKey = data['key'];
           _goodThingsControllers[0].text = data['good_1'] ?? '';
           _goodThingsControllers[1].text = data['good_2'] ?? '';
           _goodThingsControllers[2].text = data['good_3'] ?? '';
           _improvementController.text = data['improve'] ?? '';
-          for (var score in data['scores']) {
-            scores[score['category']] = (score['score'] ?? 3).toDouble();
-            if (!topics.contains(score['category'])) topics.add(score['category']);
-          }
+          scores = {
+            for (var score in data['scores'])
+              score['category']: (score['score'] ?? 3).toDouble()
+          };
         });
       }
     } catch (e) {
-      print('Load error: $e');
+      print('Error loading version: $e');
     }
   }
 
-  Future<void> _saveNote({required bool isFinal}) async {
+  Future<void> _saveCurrentFile() async {
     final data = {
+      'signature': currentSignature,
       'date': currentDate,
-      'key': currentKey,
-      'is_final': isFinal,
       'good_1': _goodThingsControllers[0].text,
       'good_2': _goodThingsControllers[1].text,
       'good_3': _goodThingsControllers[2].text,
@@ -91,51 +135,54 @@ class _GreenNotePageState extends State<GreenNotePage> {
     };
 
     try {
-      final res = await http.post(
+      await http.post(
         Uri.parse('$backendUrl/green_notes'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(data),
       );
-      final body = jsonDecode(res.body);
-      if (!mounted) return;
-      setState(() {
-        currentKey = body['key'];
-      });
     } catch (e) {
       print('Save error: $e');
     }
   }
 
-  Future<void> _createNewEmptyVersion() async {
-    final data = {
-      'date': currentDate,
-      'key': null,
-      'is_final': false,
-      'good_1': '',
-      'good_2': '',
-      'good_3': '',
-      'improve': '',
-      'scores': topics.map((t) => {'category': t, 'score': 3}).toList()
-    };
-
+  Future<void> _createNewVersion() async {
     try {
-      final res = await http.post(
+      final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
+      final list = res.statusCode == 200
+          ? List<String>.from(jsonDecode(res.body)).where((s) => s.startsWith(currentDate)).toList()
+          : [];
+      final versionNumber = list.length + 1;
+      final newSignature = "$currentDate - $versionNumber";
+
+      final data = {
+        'signature': newSignature,
+        'date': currentDate,
+        'good_1': '',
+        'good_2': '',
+        'good_3': '',
+        'improve': '',
+        'scores': topics.map((t) => {'category': t, 'score': 3}).toList()
+      };
+
+      final resPost = await http.post(
         Uri.parse('$backendUrl/green_notes'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(data),
       );
-      final body = jsonDecode(res.body);
-      if (!mounted) return;
-      setState(() => currentKey = body['key']);
+
+      if (resPost.statusCode == 200) {
+        setState(() => currentSignature = newSignature);
+      }
     } catch (e) {
-      print('New version error: $e');
+      print('Create version error: $e');
     }
   }
 
   @override
   void dispose() {
     _midnightTimer?.cancel();
-    _saveNote(isFinal: false);
+    _saveCurrentFile();
+    _saveTopics();
     for (final c in _goodThingsControllers) c.dispose();
     _improvementController.dispose();
     super.dispose();
@@ -148,13 +195,14 @@ class _GreenNotePageState extends State<GreenNotePage> {
       child: Scaffold(
         backgroundColor: Colors.lightGreen[100],
         appBar: AppBar(
-          title: Text('פתק ירוק - ${currentKey ?? ""}'),
+          title: Text('פתק ירוק - ${currentSignature ?? ""}'),
           actions: [
             IconButton(
               icon: Icon(Icons.save),
               onPressed: () async {
-                await _saveNote(isFinal: true);
-                await _createNewEmptyVersion();
+                await _saveCurrentFile();
+                await _saveTopics();
+                await _createNewVersion();
                 _resetFields();
               },
             )

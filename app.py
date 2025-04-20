@@ -183,16 +183,6 @@ def get_green_note_by_signature(signature):
         'scores': scores
     })
 
-@app.route('/green_note_topics', methods=['GET'])
-def get_green_note_topics():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM green_note_topics")
-    topics = [row[0] for row in cur.fetchall()]
-    cur.close()
-    conn.close()
-    return jsonify(topics)
-
 
 
 if __name__ == '__main__':
