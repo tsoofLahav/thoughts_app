@@ -87,24 +87,52 @@ def save_entry():
     conn.close()
     return {'status': 'entry saved'}
 
-# ---------- GREEN NOTE ----------
+# ---------------- GREEN NOTE ----------------
 
+# 1. Save list of range parameters (e.g., topics like תזונה, התנהלות...)
+@app.route('/green_note_topics', methods=['POST'])
+def save_green_note_topics():
+    data = request.get_json()
+    topics = data.get('topics', [])
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM green_note_topics")
+    for topic in topics:
+        cur.execute("INSERT INTO green_note_topics (name) VALUES (%s)", (topic,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'topics saved'})
+
+@app.route('/green_note_topics', methods=['GET'])
+def get_green_note_topics():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM green_note_topics")
+    topics = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify(topics)
+
+# 2. Save a green note version to a given signature (overwrite if exists)
 @app.route('/green_notes', methods=['POST'])
 def save_green_note():
     data = request.get_json()
+    signature = data['signature']
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Always insert a new note (new version)
+    cur.execute("DELETE FROM green_notes WHERE signature = %s", (signature,))
     cur.execute("""
-        INSERT INTO green_notes (date, good_1, good_2, good_3, improve, created_at)
-        VALUES (%s, %s, %s, %s, %s, NOW()) RETURNING id
+        INSERT INTO green_notes (signature, date, good_1, good_2, good_3, improve)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
     """, (
-        data['date'], data['good_1'], data['good_2'],
+        signature, data['date'], data['good_1'], data['good_2'],
         data['good_3'], data['improve']
     ))
     note_id = cur.fetchone()[0]
 
+    cur.execute("DELETE FROM green_note_scores WHERE note_id = %s", (note_id,))
     for score in data['scores']:
         cur.execute("""
             INSERT INTO green_note_scores (note_id, category, score)
@@ -114,20 +142,28 @@ def save_green_note():
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'green note saved'})
+    return jsonify({'status': 'note saved'})
 
+# 3. Get all versions (signatures) for history
+@app.route('/green_notes/signatures', methods=['GET'])
+def get_all_green_note_signatures():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT signature FROM green_notes ORDER BY date, signature")
+    signatures = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify(signatures)
 
-@app.route('/green_notes/<date>', methods=['GET'])
-def get_latest_note_by_date(date):
+# 4. Get data for a specific file version
+@app.route('/green_notes/version/<signature>', methods=['GET'])
+def get_green_note_by_signature(signature):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, good_1, good_2, good_3, improve
-        FROM green_notes
-        WHERE date = %s
-        ORDER BY created_at DESC
-        LIMIT 1
-    """, (date,))
+        SELECT id, date, good_1, good_2, good_3, improve
+        FROM green_notes WHERE signature = %s
+    """, (signature,))
     row = cur.fetchone()
     if not row:
         return jsonify(None)
@@ -138,69 +174,24 @@ def get_latest_note_by_date(date):
     cur.close()
     conn.close()
     return jsonify({
-        'date': date,
-        'good_1': row[1], 'good_2': row[2], 'good_3': row[3], 'improve': row[4],
+        'signature': signature,
+        'date': row[1],
+        'good_1': row[2],
+        'good_2': row[3],
+        'good_3': row[4],
+        'improve': row[5],
         'scores': scores
     })
 
-
-@app.route('/green_notes/today/<date>', methods=['GET'])
-def get_latest_note_for_today(date):
+@app.route('/green_note_topics', methods=['GET'])
+def get_green_note_topics():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve,
-               json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
-        FROM green_notes gn
-        LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
-        WHERE gn.date = %s
-        GROUP BY gn.id
-        ORDER BY gn.created_at DESC
-        LIMIT 1
-    """, (date,))
-    row = cur.fetchone()
+    cur.execute("SELECT name FROM green_note_topics")
+    topics = [row[0] for row in cur.fetchall()]
     cur.close()
     conn.close()
-    if row:
-        return jsonify({
-            'date': row[1],
-            'good_1': row[2],
-            'good_2': row[3],
-            'good_3': row[4],
-            'improve': row[5],
-            'scores': row[6]
-        })
-    return jsonify(None)
-
-@app.route('/green_notes_unsaved/<date>', methods=['GET'])
-def get_latest_note_for_today(date):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT gn.id, gn.date, gn.is_final, gn.good_1, gn.good_2, gn.good_3, gn.improve,
-               json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
-        FROM green_notes gn
-        LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
-        WHERE gn.date = %s
-        GROUP BY gn.id, gn.date, gn.is_final, gn.good_1, gn.good_2, gn.good_3, gn.improve
-        ORDER BY gn.created_at DESC
-        LIMIT 1
-    """, (date,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if row:
-        return jsonify({
-            'key': f"{row[1]} {'(final)' if row[2] else '(draft)'} {row[0]}",
-            'date': row[1],
-            'good_1': row[3],
-            'good_2': row[4],
-            'good_3': row[5],
-            'improve': row[6],
-            'scores': row[7]
-        })
-    return jsonify(None)
+    return jsonify(topics)
 
 
 
