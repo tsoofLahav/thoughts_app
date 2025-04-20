@@ -181,7 +181,7 @@ def get_unsaved_note(date):
                json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
         FROM green_notes gn
         LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
-        WHERE gn.date = %s
+        WHERE gn.date = %s AND gn.is_final = false
         GROUP BY gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve
         ORDER BY gn.created_at DESC
         LIMIT 1
@@ -191,7 +191,7 @@ def get_unsaved_note(date):
     conn.close()
     if row:
         return jsonify({
-            'key': f"{row[1]} {row[0]}",  # Use date + id as the unique key
+            'key': f"{row[1]} {row[0]}",  # Use date + id
             'date': row[1],
             'good_1': row[2],
             'good_2': row[3],
