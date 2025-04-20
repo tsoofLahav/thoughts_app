@@ -170,6 +170,34 @@ def get_latest_note_for_today(date):
         })
     return jsonify(None)
 
+@app.route('/green_notes_unsaved/<date>', methods=['GET'])
+def get_unsaved_note(date):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT gn.id, gn.date, gn.good_1, gn.good_2, gn.good_3, gn.improve,
+               json_agg(json_build_object('category', gns.category, 'score', gns.score)) as scores
+        FROM green_notes gn
+        LEFT JOIN green_note_scores gns ON gn.id = gns.note_id
+        WHERE gn.date = %s
+        ORDER BY gn.created_at DESC
+        LIMIT 1
+    """, (date,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if row:
+        return jsonify({
+            'date': row[1],
+            'good_1': row[2],
+            'good_2': row[3],
+            'good_3': row[4],
+            'improve': row[5],
+            'scores': row[6]
+        })
+    return jsonify(None)
+
+
 
 
 if __name__ == '__main__':
