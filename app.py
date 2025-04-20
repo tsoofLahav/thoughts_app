@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import psycopg2
 import os
+from flask import jsonify
+
 
 app = Flask(__name__)
 CORS(app)
@@ -112,7 +114,7 @@ def save_green_note():
     conn.commit()
     cur.close()
     conn.close()
-    return {'status': 'green note saved'}
+    return jsonify({'status': 'green note saved'})
 
 
 @app.route('/green_notes/<date>', methods=['GET'])
