@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'section_file_page.dart';
 import 'topic_manager.dart';
-import 'package:http/http.dart' as http;
 
 class TopicPage extends StatefulWidget {
   final int topicId;
@@ -30,14 +29,19 @@ class _TopicPageState extends State<TopicPage> {
 
   Future<void> _loadFiles() async {
     try {
-      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.topicName}'));
+      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.topicId}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
-          plansFiles = List<String>.from(data['plans']);
-          tasksFiles = List<String>.from(data['tasks']);
-          docsFiles = List<String>.from(data['docs']);
+          plansFiles = List<String>.from(data['plans'] ?? []);
+          tasksFiles = List<String>.from(data['tasks'] ?? []);
+          docsFiles = List<String>.from(data['docs'] ?? []);
         });
+        print("Loaded plans: $plansFiles");
+        print("Loaded tasks: $tasksFiles");
+        print("Loaded docs: $docsFiles");
+      } else {
+        print("Failed to load files: ${res.statusCode}");
       }
     } catch (e) {
       print('Failed to load files: $e');
@@ -46,21 +50,12 @@ class _TopicPageState extends State<TopicPage> {
 
   void _loadTopicColor() {
     final topic = TopicManager.topics.firstWhere(
-      (t) => t['name'] == widget.topicName,
+      (t) => t['id'] == widget.topicId,
       orElse: () => {'color': Colors.white},
     );
     final baseColor = topic['color'] as Color;
     final hsl = HSLColor.fromColor(baseColor);
     backgroundColor = hsl.withLightness((hsl.lightness + 0.6).clamp(0.75, 0.92)).toColor();
-  }
-
-  List<String> _getList(SharedPreferences prefs, String section) {
-    final key = '${widget.topicName}_$section';
-    final stored = prefs.getString(key);
-    if (stored != null) {
-      return List<String>.from(jsonDecode(stored));
-    }
-    return [];
   }
 
   Future<void> _saveFiles(String section) async {
@@ -70,21 +65,23 @@ class _TopicPageState extends State<TopicPage> {
     else list = docsFiles;
 
     final body = {
-      'topic': widget.topicName,
+      'topic_id': widget.topicId,
       'section': section,
       'files': list
     };
 
     try {
-      await http.post(
+      final res = await http.post(
         Uri.parse('https://thoughts-app-92lm.onrender.com/files'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
+      print('Saved $section files: $list (status: ${res.statusCode})');
     } catch (e) {
-      print('Failed to save files: $e');
+      print('Failed to save $section files: $e');
     }
   }
+
 
   void _addFile(String section) {
     String fileName = '';
@@ -107,14 +104,14 @@ class _TopicPageState extends State<TopicPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
           TextButton(
-              onPressed: () {
-                if (fileName.trim().isEmpty) return;
-                Navigator.pop(context);
-                setState(() {
-                  _addToList(section, fileName.trim());
-                });
-              },
-              child: Text('צור')),
+            onPressed: () {
+              if (fileName.trim().isEmpty) return;
+              Navigator.pop(context);
+              setState(() {
+                _addToList(section, fileName.trim());
+              });
+            },
+            child: Text('צור')),
         ],
       ),
     );
@@ -169,7 +166,6 @@ class _TopicPageState extends State<TopicPage> {
       ),
     );
   }
-
 
   void _renameFile(String section, int index, String newName) {
     setState(() {

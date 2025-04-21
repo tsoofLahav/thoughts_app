@@ -74,19 +74,23 @@ def get_files(topic_id):
     return jsonify(grouped)
 
 @app.route('/files', methods=['POST'])
-def create_file():
+def create_files():
     data = request.get_json()
+    topic_id = data['topic_id']
+    section = data['section']
+    files = data['files']  # this is a list of file names
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO files (topic_id, name, section)
-        VALUES (%s, %s, %s) RETURNING id
-    """, (data['topic_id'], data['name'], data['section']))
-    file_id = cur.fetchone()[0]
+    for file_name in files:
+        cur.execute("""
+            INSERT INTO files (topic_id, name, section)
+            VALUES (%s, %s, %s)
+        """, (topic_id, file_name, section))
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'file_id': file_id})
+    return jsonify({'status': 'ok'})
 
 # ---------- ENTRIES ----------
 @app.route('/entries/<int:file_id>', methods=['GET'])
