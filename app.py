@@ -92,6 +92,26 @@ def create_files():
     conn.close()
     return jsonify({'status': 'ok'})
 
+# Add this to your Flask backend (e.g., app.py)
+@app.route('/files/delete', methods=['POST'])
+def delete_file():
+    data = request.get_json()
+    topic_id = data['topic_id']
+    section = data['section']
+    name = data['name']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM files
+        WHERE topic_id = %s AND section = %s AND name = %s
+    """, (topic_id, section, name))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'deleted'})
+
+
 # ---------- ENTRIES ----------
 @app.route('/entries/<int:file_id>', methods=['GET'])
 def get_entries(file_id):
