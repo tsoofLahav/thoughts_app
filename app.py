@@ -60,95 +60,101 @@ def save_directories():
     return jsonify({'status': 'saved'})
 
 # ---------- FILES ----------
+
 @app.route('/files/<int:topic_id>', methods=['GET'])
 def get_files(topic_id):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT name, section FROM files WHERE topic_id = %s", (topic_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
     grouped = {'plans': [], 'tasks': [], 'docs': []}
-    for name, section in cur.fetchall():
+    for name, section in rows:
         if section in grouped:
             grouped[section].append(name)
-    cur.close()
-    conn.close()
     return jsonify(grouped)
 
-@app.route('/files', methods=['POST'])
-def create_files():
-    data = request.get_json()
-    topic_id = data['topic_id']
-    section = data['section']
-    files = data['files']  # this is a list of file names
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    for file_name in files:
-        cur.execute("""
-            INSERT INTO files (topic_id, name, section)
-            VALUES (%s, %s, %s)
-        """, (topic_id, file_name, section))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'ok'})
-
-# Add this to your Flask backend (e.g., app.py)
 @app.route('/files/delete', methods=['POST'])
 def delete_file():
     data = request.get_json()
-    topic_id = data['topic_id']
-    section = data['section']
-    name = data['name']
-
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        DELETE FROM files
-        WHERE topic_id = %s AND section = %s AND name = %s
-    """, (topic_id, section, name))
+    cur.execute("DELETE FROM files WHERE topic_id = %s AND name = %s", (data['topic_id'], data['name']))
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'deleted'})
+    return '', 200
 
-@app.route('/file_content/<int:file_id>/<section>', methods=['GET'])
-def get_file_content(file_id, section):
+
+@app.route('/files/add', methods=['POST'])
+def add_file():
+    data = request.get_json()
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT content FROM file_entries
-        WHERE file_id = %s AND section = %s
-        ORDER BY created_at
-    """, (file_id, section))
-    content = [r[0] for r in cur.fetchall()]
+        INSERT INTO files (topic_id, section, name, linked, content)
+        VALUES (%s, %s, %s, FALSE, '[]')
+    """, (data['topic_id'], data['section'], data['name']))
+    conn.commit()
     cur.close()
     conn.close()
-    return jsonify(content)
+    return '', 200
 
 
+# ----------FILES CONTENT ----------
 @app.route('/file_content', methods=['POST'])
 def save_file_content():
     data = request.get_json()
     conn = get_db_connection()
     cur = conn.cursor()
-
-    # Remove existing content
     cur.execute("""
-        DELETE FROM file_entries
-        WHERE file_id = %s AND section = %s
-    """, (data['file_id'], data['section']))
-
-    # Insert new content
-    for entry in data['content']:
-        cur.execute("""
-            INSERT INTO file_entries (file_id, section, content)
-            VALUES (%s, %s, %s)
-        """, (data['file_id'], data['section'], json.dumps(entry)))
-
+        UPDATE files
+        SET content = %s
+        WHERE topic_id = %s AND name = %s
+    """, (json.dumps(data['content']), data['topic_id'], data['name']))
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'saved'})
+    return '', 200
+
+@app.route('/file_link/toggle', methods=['POST'])
+def toggle_file_link():
+    data = request.get_json()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE files
+        SET linked = NOT linked
+        WHERE topic_id = %s AND name = %s
+    """, (data['topic_id'], data['name']))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return '', 200
+
+
+@app.route('/file_info', methods=['GET'])
+def get_file_info():
+    topic_id = request.args.get('topic_id')
+    file_name = request.args.get('file_name')
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT content, linked FROM files
+        WHERE topic_id = %s AND name = %s
+    """, (topic_id, file_name))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if row:
+        return jsonify({'content': row[0], 'linked': row[1]})
+    else:
+        return jsonify({'error': 'File not found'}), 404
 
 
 # ---------- LISTS OF FILES ----------

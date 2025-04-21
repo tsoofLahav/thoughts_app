@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'topic_manager.dart';
 
 class SectionFilePage extends StatefulWidget {
-  final String topicName;
+  final int fileId;
   final String section;
   final String fileName;
 
   SectionFilePage({
-    required this.topicName,
+    required this.fileId,
     required this.section,
     required this.fileName,
   });
@@ -23,32 +22,38 @@ class _SectionFilePageState extends State<SectionFilePage> {
   bool useNumbers = false;
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
-  bool isPinned = false;
   Color? appBarColor;
+  String topicName = '';
   final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
   void initState() {
     super.initState();
+    _loadTopicDetails();
     _loadContent();
-    _loadAppBarColor();
   }
 
-  void _loadAppBarColor() {
-    final topic = TopicManager.topics.firstWhere(
-      (t) => t['name'] == widget.topicName,
-      orElse: () => {'color': Colors.teal},
-    );
-    final baseColor = topic['color'] as Color;
-    final hsl = HSLColor.fromColor(baseColor);
-    setState(() {
-      appBarColor = hsl.withLightness((hsl.lightness + 0.5).clamp(0.7, 0.9)).toColor();
-    });
+  Future<void> _loadTopicDetails() async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/file_metadata/${widget.fileId}'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final colorValue = data['color'];
+        topicName = data['topic_name'];
+        final baseColor = Color(colorValue);
+        final hsl = HSLColor.fromColor(baseColor);
+        setState(() {
+          appBarColor = hsl.withLightness((hsl.lightness + 0.5).clamp(0.7, 0.9)).toColor();
+        });
+      }
+    } catch (e) {
+      print('Failed to load topic details: $e');
+    }
   }
 
   Future<void> _loadContent() async {
     try {
-      final res = await http.get(Uri.parse('$backendUrl/file_content?topic=${widget.topicName}&section=${widget.section}&file=${widget.fileName}'));
+      final res = await http.get(Uri.parse('$backendUrl/file_content/${widget.fileId}'));
       if (res.statusCode == 200) {
         setState(() {
           content = jsonDecode(res.body);
@@ -61,9 +66,8 @@ class _SectionFilePageState extends State<SectionFilePage> {
 
   Future<void> _saveContent() async {
     final body = {
-      'topic': widget.topicName,
+      'file_id': widget.fileId,
       'section': widget.section,
-      'file': widget.fileName,
       'content': content,
     };
 
@@ -96,27 +100,10 @@ class _SectionFilePageState extends State<SectionFilePage> {
   }
 
   void _removeEntry(int index) async {
-    final body = {
-      'topic': widget.topicName,
-      'section': widget.section,
-      'file': widget.fileName,
-      'index': index,
-    };
-
-    try {
-      final res = await http.delete(
-        Uri.parse('$backendUrl/file_content'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-      if (res.statusCode == 200) {
-        setState(() {
-          content.removeAt(index);
-        });
-      }
-    } catch (e) {
-      print('Failed to delete entry: $e');
-    }
+    setState(() {
+      content.removeAt(index);
+    });
+    _saveContent();
   }
 
   void _toggleDone(int index) {
@@ -124,6 +111,21 @@ class _SectionFilePageState extends State<SectionFilePage> {
       content[index]['done'] = !(content[index]['done'] ?? false);
     });
     _saveContent();
+  }
+
+  Future<void> _linkFile() async {
+    try {
+      final res = await http.post(
+        Uri.parse('$backendUrl/link_file'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'file_id': widget.fileId}),
+      );
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('הקובץ נשלח לשורת קיצורים')));
+      }
+    } catch (e) {
+      print('Failed to link file: $e');
+    }
   }
 
   Widget _buildInput() {
@@ -155,21 +157,13 @@ class _SectionFilePageState extends State<SectionFilePage> {
     if (widget.section == 'docs') {
       return ListView.builder(
         itemCount: content.length,
-        itemBuilder: (_, i) {
-          final entry = content[i];
-          return ListTile(
-            title: Text(entry['text']),
-            subtitle: Text(entry['date']),
-            trailing: IconButton(
-              icon: Icon(Icons.delete),
-              onPressed: () => _removeEntry(i),
-            ),
-          );
-        },
+        itemBuilder: (_, i) => ListTile(
+          title: Text(content[i]['text']),
+          subtitle: Text(content[i]['date']),
+          trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => _removeEntry(i)),
+        ),
       );
-    }
-
-    if (widget.section == 'tasks') {
+    } else if (widget.section == 'tasks') {
       return ListView.builder(
         itemCount: content.length,
         itemBuilder: (_, i) {
@@ -194,25 +188,18 @@ class _SectionFilePageState extends State<SectionFilePage> {
           );
         },
       );
-    }
-
-    if (widget.section == 'plans') {
+    } else {
       return ListView.builder(
         itemCount: content.length,
         itemBuilder: (_, i) {
           final prefix = useNumbers ? '${i + 1}.' : '•';
           return ListTile(
             title: Text('$prefix ${content[i]}'),
-            trailing: IconButton(
-              icon: Icon(Icons.delete),
-              onPressed: () => _removeEntry(i),
-            ),
+            trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => _removeEntry(i)),
           );
         },
       );
     }
-
-    return Center(child: Text('לא נתמך'));
   }
 
   @override
@@ -221,8 +208,15 @@ class _SectionFilePageState extends State<SectionFilePage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${widget.fileName} - ${widget.topicName}'),
+          title: Text('${widget.fileName} - $topicName'),
           backgroundColor: appBarColor ?? Theme.of(context).primaryColor,
+          actions: [
+            IconButton(
+              icon: Icon(Icons.link),
+              tooltip: 'הצמד לשורת קיצורים',
+              onPressed: _linkFile,
+            )
+          ],
         ),
         body: Column(
           children: [

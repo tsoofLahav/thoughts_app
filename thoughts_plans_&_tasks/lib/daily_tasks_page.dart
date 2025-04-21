@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'topic_manager.dart';
+import 'package:http/http.dart' as http;
 import 'section_file_page.dart';
 
 class DailyTasksPage extends StatefulWidget {
@@ -10,12 +9,8 @@ class DailyTasksPage extends StatefulWidget {
 }
 
 class _DailyTasksPageState extends State<DailyTasksPage> {
-  List<String> constantTasks = [];
-  List<String> todayTasks = [];
-  Map<String, Color> taskColors = {};
-  Set<String> finishedConstantToday = {};
-
-  String get todayKey => 'finished_constant_tasks_${DateTime.now().toIso8601String().split('T').first}';
+  List<Map<String, dynamic>> constantTasks = [];
+  List<Map<String, dynamic>> todayTasks = [];
 
   @override
   void initState() {
@@ -24,161 +19,67 @@ class _DailyTasksPageState extends State<DailyTasksPage> {
   }
 
   void _loadTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      constantTasks = prefs.getStringList('constantTasks') ?? [];
-      todayTasks = prefs.getStringList('todayTasks') ?? [];
-      final colors = prefs.getString('todayTaskColors');
-      if (colors != null) {
-        taskColors = Map<String, Color>.from(
-          jsonDecode(colors).map((k, v) => MapEntry(k, Color(v))),
-        );
+    try {
+      final resToday = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/today_tasks'));
+      final resConstant = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/constant_tasks'));
+
+      if (resToday.statusCode == 200 && resConstant.statusCode == 200) {
+        final List todayData = jsonDecode(resToday.body);
+        final List constantData = jsonDecode(resConstant.body);
+        setState(() {
+          todayTasks = List<Map<String, dynamic>>.from(todayData);
+          constantTasks = List<Map<String, dynamic>>.from(constantData);
+        });
+      } else {
+        print('Failed to load tasks. Today: ${resToday.statusCode}, Constant: ${resConstant.statusCode}');
       }
-      finishedConstantToday = prefs.getStringList(todayKey)?.toSet() ?? {};
-    });
+    } catch (e) {
+      print('Error fetching tasks: $e');
+    }
   }
 
-  void _saveTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('constantTasks', constantTasks);
-    await prefs.setStringList('todayTasks', todayTasks);
-    await prefs.setString(
-      'todayTaskColors',
-      jsonEncode(taskColors.map((k, v) => MapEntry(k, v.value))),
-    );
-    await prefs.setStringList(todayKey, finishedConstantToday.toList());
-  }
-
-  void _addTask(bool isConstant) {
-    String newTask = '';
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('הוסף משימה חדשה'),
-        content: TextField(
-          controller: controller,
-          textDirection: TextDirection.rtl,
-          autofocus: true,
-          onChanged: (value) => newTask = value,
-          onSubmitted: (_) {
-            Navigator.of(context).pop();
-            if (newTask.trim().isNotEmpty) {
-              setState(() {
-                if (isConstant) {
-                  constantTasks.add(newTask.trim());
-                } else {
-                  todayTasks.add(newTask.trim());
-                }
-              });
-              _saveTasks();
-            }
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (newTask.trim().isNotEmpty) {
-                setState(() {
-                  if (isConstant) {
-                    constantTasks.add(newTask.trim());
-                  } else {
-                    todayTasks.add(newTask.trim());
-                  }
-                });
-                _saveTasks();
-              }
-            },
-            child: Text('הוסף'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showTaskOptions(String task, bool isConstant) async {
+  void _showTaskOptions(Map<String, dynamic> task, bool isConstant) async {
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fill,
-      items: isConstant
-          ? [
-              PopupMenuItem(value: 'hide', child: Text('סיים משימה')),
-              PopupMenuItem(value: 'delete', child: Text('מחק משימה')),
-            ]
-          : [
-              PopupMenuItem(value: 'finish', child: Text('סיים משימה')),
-              PopupMenuItem(value: 'remove', child: Text('הסר מהיומי')),
-            ],
+      items: [
+        PopupMenuItem(value: 'finish', child: Text('סיים משימה')),
+        PopupMenuItem(value: 'remove', child: Text('הסר')),
+      ],
     );
 
-    final prefs = await SharedPreferences.getInstance();
-
-    if (action == 'hide') {
-      setState(() {
-        finishedConstantToday.add(task);
-      });
-    } else if (action == 'delete') {
-      setState(() {
-        constantTasks.remove(task);
-      });
-    } else if (action == 'finish') {
-      setState(() {
-        todayTasks.remove(task);
-      });
-      final parts = task.split('::');
-      if (parts.length == 2) {
-        final topic = parts[0];
-        final fileName = parts[1];
-        final key = '${topic}_tasks';
-        final stored = prefs.getString(key);
-        if (stored != null) {
-          final files = List<String>.from(jsonDecode(stored));
-          files.remove(fileName);
-          await prefs.setString(key, jsonEncode(files));
-        }
+    if (action == 'finish' || action == 'remove') {
+      try {
+        await http.post(
+          Uri.parse('https://thoughts-app-92lm.onrender.com/remove_task'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'task_id': task['id'], 'is_constant': isConstant}),
+        );
+        _loadTasks();
+      } catch (e) {
+        print('Failed to update task status: $e');
       }
-    } else if (action == 'remove') {
-      setState(() {
-        todayTasks.remove(task);
-      });
     }
-    _saveTasks();
   }
 
-  Widget _buildTask(String task, bool isConstant) {
+  Widget _buildTask(Map<String, dynamic> task, bool isConstant) {
     return GestureDetector(
       onSecondaryTap: () => _showTaskOptions(task, isConstant),
-      onTap: () {
-        if (!isConstant && task.contains('::')) {
-          final parts = task.split('::');
-          final topic = parts[0];
-          final fileName = parts[1];
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SectionFilePage(
-                topicName: topic,
-                section: 'tasks',
-                fileName: fileName,
-              ),
-            ),
-          );
-        }
-      },
       child: Container(
         margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: taskColors[task]?.withOpacity(0.2) ?? Colors.grey.shade200,
+          color: Color(task['color']).withOpacity(0.2),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Icon(Icons.radio_button_unchecked, size: 18),
+            Icon(
+              task['is_done'] ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 18,
+            ),
             SizedBox(width: 8),
-            Expanded(child: Text(task.split('::').last)),
+            Expanded(child: Text(task['name'])),
           ],
         ),
       ),
@@ -189,18 +90,29 @@ class _DailyTasksPageState extends State<DailyTasksPage> {
     return ReorderableListView(
       shrinkWrap: true,
       physics: NeverScrollableScrollPhysics(),
-      onReorder: (oldIndex, newIndex) {
-        setState(() {
-          if (newIndex > oldIndex) newIndex--;
-          final item = todayTasks.removeAt(oldIndex);
-          todayTasks.insert(newIndex, item);
-          _saveTasks();
-        });
+      onReorder: (oldIndex, newIndex) async {
+        if (newIndex > oldIndex) newIndex--;
+        final item = todayTasks.removeAt(oldIndex);
+        todayTasks.insert(newIndex, item);
+
+        final orderUpdate = todayTasks
+            .asMap()
+            .entries
+            .map((e) => {'id': e.value['id'], 'order': e.key})
+            .toList();
+
+        await http.post(
+          Uri.parse('https://thoughts-app-92lm.onrender.com/update_today_task_order'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'updates': orderUpdate}),
+        );
+
+        setState(() {});
       },
       children: [
         for (int i = 0; i < todayTasks.length; i++)
           ListTile(
-            key: ValueKey(todayTasks[i]),
+            key: ValueKey(todayTasks[i]['id']),
             title: _buildTask(todayTasks[i], false),
           )
       ],
@@ -220,19 +132,11 @@ class _DailyTasksPageState extends State<DailyTasksPage> {
             children: [
               ListTile(
                 title: Text('משימות קבועות', style: TextStyle(fontWeight: FontWeight.bold)),
-                trailing: IconButton(
-                  icon: Icon(Icons.add),
-                  onPressed: () => _addTask(true),
-                ),
               ),
-              ...constantTasks.where((t) => !finishedConstantToday.contains(t)).map((task) => _buildTask(task, true)).toList(),
+              ...constantTasks.map((task) => _buildTask(task, true)).toList(),
               Divider(),
               ListTile(
                 title: Text('משימות להיום', style: TextStyle(fontWeight: FontWeight.bold)),
-                trailing: IconButton(
-                  icon: Icon(Icons.add),
-                  onPressed: () => _addTask(false),
-                ),
               ),
               _buildReorderableTodayTasks(),
             ],

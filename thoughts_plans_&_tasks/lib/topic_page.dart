@@ -31,22 +31,18 @@ class _TopicPageState extends State<TopicPage> {
     try {
       final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.topicId}'));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
+        final data = jsonDecode(res.body); // it's a map
         setState(() {
           plansFiles = List<String>.from(data['plans'] ?? []);
           tasksFiles = List<String>.from(data['tasks'] ?? []);
-          docsFiles = List<String>.from(data['docs'] ?? []);
+          docsFiles  = List<String>.from(data['docs']  ?? []);
         });
-        print("Loaded plans: $plansFiles");
-        print("Loaded tasks: $tasksFiles");
-        print("Loaded docs: $docsFiles");
-      } else {
-        print("Failed to load files: ${res.statusCode}");
       }
     } catch (e) {
       print('Failed to load files: $e');
     }
   }
+
 
   void _loadTopicColor() {
     final topic = TopicManager.topics.firstWhere(
@@ -64,24 +60,22 @@ class _TopicPageState extends State<TopicPage> {
     else if (section == 'tasks') list = tasksFiles;
     else list = docsFiles;
 
-    final body = {
-      'topic_id': widget.topicId,
-      'section': section,
-      'files': list
-    };
-
-    try {
-      final res = await http.post(
-        Uri.parse('https://thoughts-app-92lm.onrender.com/files'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-      print('Saved $section files: $list (status: ${res.statusCode})');
-    } catch (e) {
-      print('Failed to save $section files: $e');
+    for (var name in list) {
+      try {
+        await http.post(
+          Uri.parse('https://thoughts-app-92lm.onrender.com/create_file'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'topic_id': widget.topicId,
+            'section': section,
+            'name': name
+          }),
+        );
+      } catch (e) {
+        print('Failed to save file "$name": $e');
+      }
     }
   }
-
 
   void _addFile(String section) {
     String fileName = '';
@@ -143,12 +137,12 @@ class _TopicPageState extends State<TopicPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
           TextButton(
-              onPressed: () {
-                if (newName.trim().isEmpty) return;
-                _renameFile(section, index, newName.trim());
-                Navigator.pop(context);
-              },
-              child: Text('שמור')),
+            onPressed: () {
+              if (newName.trim().isEmpty) return;
+              _renameFile(section, index, newName.trim());
+              Navigator.pop(context);
+            },
+            child: Text('שמור')),
         ],
       ),
     );
@@ -176,34 +170,14 @@ class _TopicPageState extends State<TopicPage> {
     _saveFiles(section);
   }
 
-  void _deleteFile(String section, int index) async {
-    String fileName;
-    if (section == 'plans') fileName = plansFiles[index];
-    else if (section == 'tasks') fileName = tasksFiles[index];
-    else fileName = docsFiles[index];
-
-    try {
-      final res = await http.post(
-        Uri.parse('https://thoughts-app-92lm.onrender.com/files/delete'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'topic_id': widget.topicId,
-          'section': section,
-          'name': fileName
-        }),
-      );
-      print('Deleted file "$fileName" from $section (status: ${res.statusCode})');
-    } catch (e) {
-      print('Failed to delete file "$fileName": $e');
-    }
-
+  void _deleteFile(String section, int index) {
     setState(() {
       if (section == 'plans') plansFiles.removeAt(index);
       if (section == 'tasks') tasksFiles.removeAt(index);
       if (section == 'docs') docsFiles.removeAt(index);
     });
+    _saveFiles(section);
   }
-
 
   Widget _buildSection(String label, List<String> files, String key) {
     return Expanded(

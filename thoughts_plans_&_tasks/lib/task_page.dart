@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'topic_manager.dart';
+import 'package:http/http.dart' as http;
 import 'section_file_page.dart';
 
 class TaskPage extends StatefulWidget {
@@ -10,168 +9,125 @@ class TaskPage extends StatefulWidget {
 }
 
 class _TaskPageState extends State<TaskPage> {
-  Map<String, List<String>> sections = {
+  Map<String, List<Map<String, dynamic>>> sections = {
     'השבוע': [],
     'שבוע הבא': [],
     'בעתיד': [],
   };
-  Map<String, Color> fileColors = {};
-  Map<String, bool> calendarMarks = {};
+
+  final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
   void initState() {
     super.initState();
-    _loadAllTaskFiles();
+    _loadTasksFromDB();
   }
 
-  void _loadAllTaskFiles() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    Map<String, List<String>> tempMap = {
-      'השבוע': [],
-      'שבוע הבא': [],
-      'בעתיד': [],
-    };
-    Map<String, Color> tempColors = {};
-    Map<String, bool> tempMarks = {};
+  Future<void> _loadTasksFromDB() async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/task_files'));
+      if (res.statusCode == 200) {
+        final decoded = List<Map<String, dynamic>>.from(jsonDecode(res.body));
+        Map<String, List<Map<String, dynamic>>> temp = {
+          'השבוע': [],
+          'שבוע הבא': [],
+          'בעתיד': [],
+        };
 
-    for (var topic in TopicManager.topics) {
-      final topicName = topic['name'];
-      final color = topic['color'] as Color;
-      final key = '${topicName}_tasks';
-      final stored = prefs.getString(key);
-      if (stored != null) {
-        final files = List<String>.from(jsonDecode(stored));
-        for (var file in files) {
-          final fullName = '$topicName::$file';
-          tempMap['בעתיד']!.add(fullName);
-          tempColors[fullName] = color;
-          tempMarks[fullName] = false;
+        for (var file in decoded) {
+          final section = file['section'] ?? 'בעתיד';
+          temp[section]!.add(file);
         }
-      }
-    }
 
-    setState(() {
-      sections = tempMap;
-      fileColors = tempColors;
-      calendarMarks = tempMarks;
-    });
+        setState(() {
+          sections = temp;
+        });
+      }
+    } catch (e) {
+      print('Failed to load task files: $e');
+    }
   }
 
-  void _moveTask(String fromSection, String toSection, String file, [int? index]) {
+  Future<void> _saveTasksToDB() async {
+    List<Map<String, dynamic>> updated = [];
+    sections.forEach((section, files) {
+      for (int i = 0; i < files.length; i++) {
+        final file = files[i];
+        updated.add({
+          'file_id': file['id'],
+          'section': section,
+          'order_index': i
+        });
+      }
+    });
+
+    try {
+      final res = await http.post(
+        Uri.parse('$backendUrl/update_task_sections'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'updates': updated}),
+      );
+      print('Saved task sections (status: ${res.statusCode})');
+    } catch (e) {
+      print('Failed to save task sections: $e');
+    }
+  }
+
+  void _moveTask(String from, String to, Map<String, dynamic> file, [int? index]) {
     setState(() {
-      sections[fromSection]!.remove(file);
+      sections[from]!.remove(file);
       if (index != null) {
-        sections[toSection]!.insert(index, file);
+        sections[to]!.insert(index, file);
       } else {
-        sections[toSection]!.add(file);
+        sections[to]!.add(file);
       }
     });
   }
 
-  void _handleRightClick(BuildContext context, String section, String file) async {
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fill,
-      items: [
-        PopupMenuItem(value: 'daily', child: Text('העבר למשימות יומיות')),
-        PopupMenuItem(value: 'finish', child: Text('סיים משימה')),
-      ],
-    );
-
-    if (selected == 'daily') {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      List<String> daily = prefs.getStringList('todayTasks') ?? [];
-      if (!daily.contains(file)) {
-        daily.add(file);
-        await prefs.setStringList('todayTasks', daily);
-        final color = fileColors[file];
-        if (color != null) {
-          final colorMap = prefs.getString('todayTaskColors');
-          Map<String, dynamic> decoded = colorMap != null ? jsonDecode(colorMap) : {};
-          decoded[file] = color.value;
-          await prefs.setString('todayTaskColors', jsonEncode(decoded));
-        }
-      }
-    }
-
-    if (selected == 'finish') {
-      setState(() {
-        sections.forEach((key, list) => list.remove(file));
-      });
-
-      final parts = file.split('::');
-      final topic = parts[0];
-      final fileName = parts[1];
-      final key = '${topic}_tasks';
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getString(key);
-      if (stored != null) {
-        final files = List<String>.from(jsonDecode(stored));
-        files.remove(fileName);
-        await prefs.setString(key, jsonEncode(files));
-      }
-
-      List<String> daily = prefs.getStringList('todayTasks') ?? [];
-      daily.remove(file);
-      await prefs.setStringList('todayTasks', daily);
-    }
+  @override
+  void dispose() {
+    _saveTasksToDB();
+    super.dispose();
   }
 
-  Widget _buildTaskItem(String section, String file, int index) {
+  Widget _buildTaskItem(String section, Map<String, dynamic> file, int index) {
     return Draggable<Map<String, dynamic>>(
       data: {'from': section, 'file': file},
       feedback: Material(
         child: Container(
           padding: EdgeInsets.all(8),
-          color: fileColors[file]?.withOpacity(0.8) ?? Colors.grey,
-          child: Text(file.split('::')[1], style: TextStyle(color: Colors.white)),
+          color: file['color'] != null ? Color(file['color']).withOpacity(0.8) : Colors.grey,
+          child: Text(file['name'], style: TextStyle(color: Colors.white)),
         ),
       ),
       child: DragTarget<Map<String, dynamic>>(
         onWillAccept: (_) => true,
         onAccept: (data) => _moveTask(data['from'], section, data['file'], index),
-        builder: (context, candidateData, rejectedData) => GestureDetector(
+        builder: (context, _, __) => GestureDetector(
           onTap: () {
-            final parts = file.split('::');
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => SectionFilePage(
-                  topicName: parts[0],
+                  fileId: file['id'],
                   section: 'tasks',
-                  fileName: parts[1],
+                  fileName: file['name'],
                 ),
               ),
             );
           },
-          onSecondaryTap: () => _handleRightClick(context, section, file),
           child: Container(
             margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: fileColors[file]?.withOpacity(0.2) ?? Colors.grey.shade100,
+              color: file['color'] != null ? Color(file['color']).withOpacity(0.2) : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      calendarMarks[file] = !(calendarMarks[file] ?? false);
-                    });
-                  },
-                  child: Icon(
-                    calendarMarks[file] ?? false ? Icons.circle : Icons.circle_outlined,
-                    size: 18,
-                  ),
-                ),
+                Icon(Icons.check_circle_outline, size: 18),
                 SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    file.split('::')[1],
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
+                Expanded(child: Text(file['name'], style: TextStyle(fontSize: 16))),
               ],
             ),
           ),
@@ -184,12 +140,10 @@ class _TaskPageState extends State<TaskPage> {
     return DragTarget<Map<String, dynamic>>(
       onWillAccept: (_) => true,
       onAccept: (data) => _moveTask(data['from'], title, data['file']),
-      builder: (context, candidateData, rejectedData) => Container(
+      builder: (context, _, __) => Container(
         margin: EdgeInsets.symmetric(vertical: 8),
         padding: EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.grey)),
-        ),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey))),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
