@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class SectionFilePage extends StatefulWidget {
-  final int fileId;
+  final int topicId;
   final String section;
   final String fileName;
 
   SectionFilePage({
-    required this.fileId,
+    required this.topicId,
     required this.section,
     required this.fileName,
   });
@@ -24,22 +24,35 @@ class _SectionFilePageState extends State<SectionFilePage> {
   final FocusNode _inputFocusNode = FocusNode();
   Color? appBarColor;
   String topicName = '';
+  bool isLinked = false;
   final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
   void initState() {
     super.initState();
-    _loadTopicDetails();
-    _loadContent();
+    _loadMetadata();
   }
 
-  Future<void> _loadTopicDetails() async {
+  Future<void> _loadMetadata() async {
     try {
-      final res = await http.get(Uri.parse('$backendUrl/file_metadata/${widget.fileId}'));
+      final res = await http.get(Uri.parse('$backendUrl/file_info?topic_id=${widget.topicId}&file_name=${widget.fileName}'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          content = data['content'] ?? [];
+          isLinked = data['linked'] ?? false;
+        });
+      }
+    } catch (e) {
+      print('Failed to load file info: $e');
+    }
+
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/topic_details/${widget.topicId}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final colorValue = data['color'];
-        topicName = data['topic_name'];
+        topicName = data['name'];
         final baseColor = Color(colorValue);
         final hsl = HSLColor.fromColor(baseColor);
         setState(() {
@@ -51,29 +64,16 @@ class _SectionFilePageState extends State<SectionFilePage> {
     }
   }
 
-  Future<void> _loadContent() async {
-    try {
-      final res = await http.get(Uri.parse('$backendUrl/file_content/${widget.fileId}'));
-      if (res.statusCode == 200) {
-        setState(() {
-          content = jsonDecode(res.body);
-        });
-      }
-    } catch (e) {
-      print('Failed to load content: $e');
-    }
-  }
-
   Future<void> _saveContent() async {
     final body = {
-      'file_id': widget.fileId,
-      'section': widget.section,
+      'topic_id': widget.topicId,
+      'name': widget.fileName,
       'content': content,
     };
 
     try {
       final res = await http.post(
-        Uri.parse('$backendUrl/file_content'),
+        Uri.parse('$backendUrl/files/update_content'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
@@ -94,37 +94,39 @@ class _SectionFilePageState extends State<SectionFilePage> {
       content.add(value);
     }
     _textController.clear();
-    _saveContent();
     setState(() {});
     FocusScope.of(context).requestFocus(_inputFocusNode);
   }
 
-  void _removeEntry(int index) async {
+  void _removeEntry(int index) {
     setState(() {
       content.removeAt(index);
     });
-    _saveContent();
   }
 
   void _toggleDone(int index) {
     setState(() {
       content[index]['done'] = !(content[index]['done'] ?? false);
     });
-    _saveContent();
   }
 
-  Future<void> _linkFile() async {
+  Future<void> _toggleLink() async {
     try {
       final res = await http.post(
-        Uri.parse('$backendUrl/link_file'),
+        Uri.parse('$backendUrl/files/toggle_link'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'file_id': widget.fileId}),
+        body: jsonEncode({
+          'topic_id': widget.topicId,
+          'name': widget.fileName,
+        }),
       );
       if (res.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('הקובץ נשלח לשורת קיצורים')));
+        setState(() {
+          isLinked = !isLinked;
+        });
       }
     } catch (e) {
-      print('Failed to link file: $e');
+      print('Failed to toggle link: $e');
     }
   }
 
@@ -203,6 +205,12 @@ class _SectionFilePageState extends State<SectionFilePage> {
   }
 
   @override
+  void dispose() {
+    _saveContent();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -212,9 +220,13 @@ class _SectionFilePageState extends State<SectionFilePage> {
           backgroundColor: appBarColor ?? Theme.of(context).primaryColor,
           actions: [
             IconButton(
-              icon: Icon(Icons.link),
-              tooltip: 'הצמד לשורת קיצורים',
-              onPressed: _linkFile,
+              icon: Icon(isLinked ? Icons.link_off : Icons.link),
+              tooltip: isLinked ? 'הסר משורת קיצורים' : 'הצמד לשורת קיצורים',
+              onPressed: _toggleLink,
+            ),
+            IconButton(
+              icon: Icon(Icons.refresh),
+              onPressed: _loadMetadata,
             )
           ],
         ),
