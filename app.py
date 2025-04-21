@@ -172,42 +172,13 @@ def get_file_info():
 
 
 # ---------- LISTS OF FILES ----------
-@app.route('/link_file', methods=['POST'])
-def link_file():
-    data = request.get_json()
-    file_id = data.get('file_id')
-    if not file_id:
-        return jsonify({'error': 'file_id missing'}), 400
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE files SET linked = TRUE WHERE id = %s", (file_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'linked'})
-
-@app.route('/unlink_file', methods=['POST'])
-def unlink_file():
-    data = request.get_json()
-    file_id = data.get('file_id')
-    if not file_id:
-        return jsonify({'error': 'file_id missing'}), 400
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE files SET linked = FALSE WHERE id = %s", (file_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'unlinked'})
 
 @app.route('/linked_files', methods=['GET'])
 def get_linked_files():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT f.id, f.name, f.section, t.name, t.color
+        SELECT f.topic_id, f.name, f.section
         FROM files f
         JOIN topics t ON f.topic_id = t.id
         WHERE f.linked = TRUE
@@ -218,15 +189,14 @@ def get_linked_files():
 
     result = [
         {
-            'id': row[0],
-            'name': row[1],
-            'section': row[2],
-            'topic_name': row[3],
-            'color': row[4]
+            'topic_id': row[0],
+            'file_name': row[1],
+            'section': row[2]
         }
         for row in rows
     ]
     return jsonify(result)
+
 
 # ---------------- GREEN NOTE SYSTEM ----------------
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
+
 import 'green_note_page.dart';
 import 'directories_page.dart';
 import 'section_file_page.dart';
@@ -9,7 +10,6 @@ import 'daily_tasks_page.dart';
 import 'history_graph_page.dart';
 import 'control_page.dart';
 import 'green_note_history_page.dart';
-import 'package:http/http.dart' as http;
 
 void main() {
   runApp(ThoughtOrganizerApp());
@@ -70,24 +70,45 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
   Future<void> _loadPinnedFiles() async {
     try {
-      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/pinned_files'));
+      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/linked_files'));
       if (res.statusCode == 200) {
-        final List<dynamic> decoded = jsonDecode(res.body);
+        final List<dynamic> data = jsonDecode(res.body);
+        List<Map<String, dynamic>> files = [];
+
+        for (var item in data) {
+          final topicId = item['topic_id'];
+          final topicRes = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/topic_details/$topicId'));
+          if (topicRes.statusCode == 200) {
+            final topicData = jsonDecode(topicRes.body);
+            files.add({
+              'file': item['file_name'],
+              'section': item['section'],
+              'topic_id': topicId,
+              'topic': topicData['name'],
+              'color': Color(topicData['color'])
+            });
+          }
+        }
 
         setState(() {
-          pinnedFiles = decoded.map((file) => {
-            'file': file['name'],
-            'section': file['section'],
-            'file_id': file['id'],
-            'topic': file['topic_name'],
-            'color': Color(file['topic_color']),
-          }).toList();
+          pinnedFiles = files;
         });
-      } else {
-        print('Failed to fetch pinned files: ${res.statusCode}');
       }
     } catch (e) {
-      print('Error loading pinned files: $e');
+      print('Failed to load linked files: $e');
+    }
+  }
+
+  void _toggleLink(String fileName, int topicId) async {
+    try {
+      await http.post(
+        Uri.parse('https://thoughts-app-92lm.onrender.com/files/toggle_link'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': fileName, 'topic_id': topicId}),
+      );
+      _loadPinnedFiles();
+    } catch (e) {
+      print('Failed to toggle link: $e');
     }
   }
 
@@ -190,21 +211,15 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => SectionFilePage(
+                                    topicId: file['topic_id'],
                                     section: file['section'],
                                     fileName: file['file'],
-                                    fileId: file['file_id'],
                                   ),
                                 ),
                               );
-                              await _loadPinnedFiles();
+                              _loadPinnedFiles();
                             },
-                            onSecondaryTap: () async {
-                              final prefs = await SharedPreferences.getInstance();
-                              setState(() {
-                                pinnedFiles.removeAt(index);
-                              });
-                              await prefs.setString('pinned_files', jsonEncode(pinnedFiles));
-                            },
+                            onSecondaryTap: () => _toggleLink(file['file'], file['topic_id']),
                             child: Container(
                               width: 160,
                               margin: const EdgeInsets.symmetric(horizontal: 8),
