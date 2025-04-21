@@ -151,39 +151,62 @@ def save_file_content():
     return jsonify({'status': 'saved'})
 
 
-# ---------- ENTRIES ----------
-@app.route('/entries/<int:file_id>', methods=['GET'])
-def get_entries(file_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, text, date, done FROM file_entries
-        WHERE file_id = %s ORDER BY "order", id
-    """, (file_id,))
-    entries = [
-        {'id': r[0], 'text': r[1], 'date': r[2], 'done': r[3]}
-        for r in cur.fetchall()
-    ]
-    cur.close()
-    conn.close()
-    return jsonify(entries)
-
-@app.route('/save_entry', methods=['POST'])
-def save_entry():
+# ---------- LISTS OF FILES ----------
+@app.route('/link_file', methods=['POST'])
+def link_file():
     data = request.get_json()
+    file_id = data.get('file_id')
+    if not file_id:
+        return jsonify({'error': 'file_id missing'}), 400
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO file_entries (file_id, text, date, done, "order")
-        VALUES (%s, %s, %s, %s, %s)
-    """, (
-        data['file_id'], data['text'], data.get('date'),
-        data.get('done', False), data.get('order', 0)
-    ))
+    cur.execute("UPDATE files SET linked = TRUE WHERE id = %s", (file_id,))
     conn.commit()
     cur.close()
     conn.close()
-    return {'status': 'entry saved'}
+    return jsonify({'status': 'linked'})
+
+@app.route('/unlink_file', methods=['POST'])
+def unlink_file():
+    data = request.get_json()
+    file_id = data.get('file_id')
+    if not file_id:
+        return jsonify({'error': 'file_id missing'}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE files SET linked = FALSE WHERE id = %s", (file_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'unlinked'})
+
+@app.route('/linked_files', methods=['GET'])
+def get_linked_files():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT f.id, f.name, f.section, t.name, t.color
+        FROM files f
+        JOIN topics t ON f.topic_id = t.id
+        WHERE f.linked = TRUE
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    result = [
+        {
+            'id': row[0],
+            'name': row[1],
+            'section': row[2],
+            'topic_name': row[3],
+            'color': row[4]
+        }
+        for row in rows
+    ]
+    return jsonify(result)
 
 # ---------------- GREEN NOTE SYSTEM ----------------
 

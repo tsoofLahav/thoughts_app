@@ -1,4 +1,4 @@
-
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -71,21 +71,24 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadPinnedFiles() async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString('pinned_files');
-    if (stored != null) {
-      final decoded = List<Map<String, dynamic>>.from(jsonDecode(stored));
-      final topicMap = {for (var t in TopicManager.topics) t['name']: t['color']};
-
-      setState(() {
-        pinnedFiles = decoded.map((file) {
-          final topicColor = topicMap[file['topic']] ?? Colors.teal;
-          return {
-            ...file,
-            'color': topicColor,
-          };
-        }).toList();
-      });
+    try {
+      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/linked_files'));
+      if (res.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(res.body);
+        setState(() {
+          pinnedFiles = data.map((file) => {
+            'topic': file['topic_name'],
+            'section': file['section'],
+            'file': file['name'],
+            'color': Color(file['color']),
+            'id': file['id'],
+          }).toList();
+        });
+      } else {
+        print('Failed to fetch linked files');
+      }
+    } catch (e) {
+      print('Error loading linked files: $e');
     }
   }
 
@@ -366,11 +369,19 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                               await _loadPinnedFiles();
                             },
                             onSecondaryTap: () async {
-                              final prefs = await SharedPreferences.getInstance();
+                              final fileId = pinnedFiles[index]['id'];
                               setState(() {
                                 pinnedFiles.removeAt(index);
                               });
-                              await prefs.setString('pinned_files', jsonEncode(pinnedFiles));
+                              try {
+                                await http.post(
+                                  Uri.parse('https://thoughts-app-92lm.onrender.com/unlink_file'),
+                                  headers: {'Content-Type': 'application/json'},
+                                  body: jsonEncode({'file_id': fileId}),
+                                );
+                              } catch (e) {
+                                print('Failed to unlink file: $e');
+                              }
                             },
                             child: Container(
                               width: 160,
