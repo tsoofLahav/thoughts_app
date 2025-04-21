@@ -24,10 +24,16 @@ class _GreenNotePageState extends State<GreenNotePage> {
   @override
   void initState() {
     super.initState();
+    _wakeServer();
     currentDate = _getTodayDate();
-    _loadTopics();
-    _loadLatestVersion();
+    _initializeNote();
     _scheduleMidnightSave();
+  }
+
+  void _wakeServer() {
+    http.get(Uri.parse('$backendUrl/ping')).catchError((e) {
+      print('Wake-up failed: $e');
+    });
   }
 
   String _getTodayDate() {
@@ -43,19 +49,21 @@ class _GreenNotePageState extends State<GreenNotePage> {
   }
 
   Future<void> _handleMidnight() async {
-    await _saveCurrentFile();
+    await _saveCurrentNote();
     await _saveTopics();
-    await _createNewVersion();
+
+    // 🔽 ADD THIS LINE to reload topics just before creating the new note
+    await _loadTopics();
+
+    await _createNewVersion(dateBased: true);
     _resetFields();
     currentDate = _getTodayDate();
     _scheduleMidnightSave();
   }
 
-  void _resetFields() {
-    for (final c in _goodThingsControllers) c.clear();
-    _improvementController.clear();
-    scores = {for (var t in topics) t: 3.0};
-    setState(() => currentSignature = null);
+  Future<void> _initializeNote() async {
+    await _loadTopics();
+    await _loadOrCreateLatestNote();
   }
 
   Future<void> _loadTopics() async {
@@ -69,23 +77,21 @@ class _GreenNotePageState extends State<GreenNotePage> {
         });
       }
     } catch (e) {
-      print('Error loading topics: $e');
+      print('Failed to load topics: $e');
     }
   }
 
   Future<void> _saveTopics() async {
     try {
-      await http.post(
-        Uri.parse('$backendUrl/green_note_topics'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'topics': topics}),
-      );
+      await http.post(Uri.parse('$backendUrl/green_note_topics'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'topics': topics}));
     } catch (e) {
-      print('Error saving topics: $e');
+      print('Failed to save topics: $e');
     }
   }
 
-  Future<void> _loadLatestVersion() async {
+  Future<void> _loadOrCreateLatestNote() async {
     try {
       final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
       if (res.statusCode == 200) {
@@ -93,42 +99,71 @@ class _GreenNotePageState extends State<GreenNotePage> {
             .where((s) => s.startsWith(currentDate))
             .toList();
         if (list.isNotEmpty) {
-          final latest = list.last;
-          final success = await _loadVersion(latest);
-          if (success) {
-            setState(() => currentSignature = latest); // ✅ set headline after successful load
-          }
+          currentSignature = list.last;
+          await _loadNoteBySignature(currentSignature!);
+          return;
         }
       }
-    } catch (e) {
-      print('Load version error: $e');
+    } catch (_) {}
+    await _createNewVersion(dateBased: false); // fallback if nothing loaded
+  }
+
+  Future<void> _createNewVersion({required bool dateBased}) async {
+    final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
+    final list = res.statusCode == 200
+        ? List<String>.from(jsonDecode(res.body))
+            .where((s) => s.startsWith(currentDate))
+            .toList()
+        : [];
+    final version = list.length + 1;
+    final signature = "$currentDate - $version";
+
+    final data = {
+      'signature': signature,
+      'date': currentDate,
+      'good_1': '',
+      'good_2': '',
+      'good_3': '',
+      'improve': '',
+      'scores': topics.map((t) => {'category': t, 'score': 3}).toList()
+    };
+
+    final post = await http.post(
+      Uri.parse('$backendUrl/green_notes'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    );
+    if (post.statusCode == 200) {
+      setState(() {
+        currentSignature = signature;
+        _resetFields();
+      });
     }
   }
 
-
-  Future<bool> _loadVersion(String signature) async {
+  Future<void> _loadNoteBySignature(String signature) async {
     try {
       final res = await http.get(Uri.parse('$backendUrl/green_notes/version/$signature'));
       if (res.statusCode == 200 && res.body != 'null') {
         final data = jsonDecode(res.body);
         setState(() {
+          currentSignature = signature;
           _goodThingsControllers[0].text = data['good_1'] ?? '';
           _goodThingsControllers[1].text = data['good_2'] ?? '';
           _goodThingsControllers[2].text = data['good_3'] ?? '';
           _improvementController.text = data['improve'] ?? '';
           scores = {
-            for (var score in data['scores']) score['category']: (score['score'] ?? 3).toDouble()
+            for (var item in data['scores']) item['category']: (item['score'] ?? 3).toDouble()
           };
         });
-        return true;
       }
     } catch (e) {
-      print('Error loading version: $e');
+      print('Error loading note: $e');
     }
-    return false;
   }
 
-  Future<void> _saveCurrentFile() async {
+  Future<void> _saveCurrentNote() async {
+    if (currentSignature == null) return;
     final data = {
       'signature': currentSignature,
       'date': currentDate,
@@ -146,47 +181,20 @@ class _GreenNotePageState extends State<GreenNotePage> {
         body: jsonEncode(data),
       );
     } catch (e) {
-      print('Save error: $e');
+      print('Failed to save note: $e');
     }
   }
 
-  Future<void> _createNewVersion() async {
-    try {
-      final res = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
-      final list = res.statusCode == 200
-          ? List<String>.from(jsonDecode(res.body)).where((s) => s.startsWith(currentDate)).toList()
-          : [];
-      final versionNumber = list.length + 1;
-      final newSignature = "$currentDate - $versionNumber";
-
-      final data = {
-        'signature': newSignature,
-        'date': currentDate,
-        'good_1': '',
-        'good_2': '',
-        'good_3': '',
-        'improve': '',
-        'scores': topics.map((t) => {'category': t, 'score': 3}).toList()
-      };
-
-      final resPost = await http.post(
-        Uri.parse('$backendUrl/green_notes'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(data),
-      );
-
-      if (resPost.statusCode == 200) {
-        setState(() => currentSignature = newSignature);
-      }
-    } catch (e) {
-      print('Create version error: $e');
-    }
+  void _resetFields() {
+    for (var controller in _goodThingsControllers) controller.clear();
+    _improvementController.clear();
+    scores = {for (var t in topics) t: 3.0};
   }
 
   @override
   void dispose() {
     _midnightTimer?.cancel();
-    _saveCurrentFile();
+    _saveCurrentNote();
     _saveTopics();
     for (final c in _goodThingsControllers) c.dispose();
     _improvementController.dispose();
@@ -204,26 +212,23 @@ class _GreenNotePageState extends State<GreenNotePage> {
           actions: [
             IconButton(
               icon: Icon(Icons.add),
-              tooltip: 'הוסף נושא לדירוג',
               onPressed: () {
                 String newTopic = '';
                 showDialog(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: Text('הוסף נושא לדירוג'),
-                    content: TextField(
-                      onChanged: (value) => newTopic = value,
-                      textDirection: TextDirection.rtl,
-                    ),
+                    title: Text('הוסף נושא'),
+                    content: TextField(onChanged: (val) => newTopic = val),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
                       TextButton(
                         onPressed: () {
-                          if (newTopic.trim().isEmpty) return;
-                          setState(() {
-                            topics.add(newTopic.trim());
-                            scores[newTopic.trim()] = 3.0;
-                          });
+                          if (newTopic.trim().isNotEmpty) {
+                            setState(() {
+                              topics.add(newTopic);
+                              scores[newTopic] = 3.0;
+                            });
+                          }
                           Navigator.pop(context);
                         },
                         child: Text('הוסף'),
@@ -236,59 +241,54 @@ class _GreenNotePageState extends State<GreenNotePage> {
             IconButton(
               icon: Icon(Icons.save),
               onPressed: () async {
-                await _saveCurrentFile();
+                await _saveCurrentNote();
                 await _saveTopics();
-                await _createNewVersion();
-                _resetFields();
+                await _createNewVersion(dateBased: false);
               },
             )
           ],
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('3 דברים טובים מאתמול:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               for (int i = 0; i < 3; i++)
-                TextField(
-                  controller: _goodThingsControllers[i],
-                  decoration: InputDecoration(hintText: '${i + 1}.'),
-                ),
+                TextField(controller: _goodThingsControllers[i], decoration: InputDecoration(hintText: '${i + 1}.')),
               SizedBox(height: 20),
               Text('דבר אחד לשיפור:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               TextField(controller: _improvementController),
               SizedBox(height: 30),
               Text('נושאי דירוג:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ...topics.map((topic) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('$topic: ${scores[topic]?.toInt() ?? 3}'),
-                      Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.delete, size: 20),
-                        onPressed: () {
-                          setState(() {
-                            topics.remove(topic);
-                            scores.remove(topic);
-                          });
-                        },
+                      Row(
+                        children: [
+                          Text('$topic: ${scores[topic]?.toInt() ?? 3}'),
+                          Spacer(),
+                          IconButton(
+                            icon: Icon(Icons.delete, size: 20),
+                            onPressed: () {
+                              setState(() {
+                                topics.remove(topic);
+                                scores.remove(topic);
+                              });
+                            },
+                          )
+                        ],
+                      ),
+                      Slider(
+                        value: scores[topic] ?? 3.0,
+                        min: 1,
+                        max: 5,
+                        divisions: 4,
+                        label: scores[topic]?.toInt().toString(),
+                        onChanged: (val) => setState(() => scores[topic] = val),
                       )
                     ],
-                  ),
-                  Slider(
-                    value: scores[topic] ?? 3.0,
-                    min: 1,
-                    max: 5,
-                    divisions: 4,
-                    label: scores[topic]?.toInt().toString(),
-                    activeColor: Colors.green[900],
-                    onChanged: (val) => setState(() => scores[topic] = val),
-                  )
-                ],
-              ))
+                  ))
             ],
           ),
         ),

@@ -7,7 +7,6 @@ from flask import jsonify
 
 app = Flask(__name__)
 CORS(app)
-
 def get_db_connection():
     return psycopg2.connect(
         host=os.environ['DB_HOST'],
@@ -15,6 +14,10 @@ def get_db_connection():
         user=os.environ['DB_USER'],
         password=os.environ['DB_PASSWORD']
     )
+
+@app.route('/ping')
+def ping():
+    return 'pong', 200
 
 # ---------- TOPICS ----------
 @app.route('/topics', methods=['GET'])
@@ -183,6 +186,18 @@ def get_green_note_by_signature(signature):
         'improve': row[5],
         'scores': scores
     })
+
+
+@app.route('/green_notes/<signature>', methods=['DELETE'])
+def delete_green_note(signature):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM green_note_scores WHERE note_id = (SELECT id FROM green_notes WHERE signature = %s)", (signature,))
+    cur.execute("DELETE FROM green_notes WHERE signature = %s", (signature,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'deleted'})
 
 
 if __name__ == '__main__':

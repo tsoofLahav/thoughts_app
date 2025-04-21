@@ -9,20 +9,29 @@ class GreenNoteHistoryPage extends StatefulWidget {
 
 class _GreenNoteHistoryPageState extends State<GreenNoteHistoryPage> {
   final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
-  List<Map<String, dynamic>> greenNotes = [];
+  List<String> signatures = [];
   Map<String, dynamic>? selectedNote;
 
   @override
   void initState() {
     super.initState();
-    _fetchGreenNotes();
+    _fetchSignatures();
   }
 
-  Future<void> _fetchGreenNotes() async {
-    final response = await http.get(Uri.parse('$backendUrl/green_notes_all'));
+  Future<void> _fetchSignatures() async {
+    final response = await http.get(Uri.parse('$backendUrl/green_notes/signatures'));
     if (response.statusCode == 200) {
       setState(() {
-        greenNotes = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+        signatures = List<String>.from(jsonDecode(response.body));
+      });
+    }
+  }
+
+  Future<void> _fetchNote(String signature) async {
+    final response = await http.get(Uri.parse('$backendUrl/green_notes/version/$signature'));
+    if (response.statusCode == 200 && response.body != 'null') {
+      setState(() {
+        selectedNote = jsonDecode(response.body);
       });
     }
   }
@@ -40,16 +49,12 @@ class _GreenNoteHistoryPageState extends State<GreenNoteHistoryPage> {
               width: 200,
               color: Colors.green[50],
               child: ListView.builder(
-                itemCount: greenNotes.length,
+                itemCount: signatures.length,
                 itemBuilder: (context, index) {
-                  final note = greenNotes[index];
+                  final signature = signatures[index];
                   return ListTile(
-                    title: Text(note['date']),
-                    onTap: () {
-                      setState(() {
-                        selectedNote = note;
-                      });
-                    },
+                    title: Text(signature, style: TextStyle(fontSize: 14)),
+                    onTap: () => _fetchNote(signature),
                   );
                 },
               ),
