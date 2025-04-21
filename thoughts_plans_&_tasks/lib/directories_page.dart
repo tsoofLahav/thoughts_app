@@ -97,13 +97,12 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
     );
   }
 
-  void _submitNewTopic(String name, Color color) {
+  void _submitNewTopic(String name, Color color) async {
     if (name.trim().isNotEmpty) {
-      setState(() {
-        houses.putIfAbsent('כללי', () => []);
-        houses['כללי']!.add({'name': name.trim(), 'color': color});
-      });
-      _saveData();
+      houses.putIfAbsent('כללי', () => []);
+      houses['כללי']!.add({'name': name.trim(), 'color': color});
+      await _saveData();
+      await _loadData(); // 🔄 reload from backend to reflect changes
       Navigator.pop(context);
     }
   }
@@ -305,63 +304,60 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
             IconButton(onPressed: _addTopic, icon: Icon(Icons.add)),
           ],
         ),
-        body: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: houseNames.map((house) {
-                final topics = houses[house]!;
-                return Padding(
-                  padding: const EdgeInsets.only(left: 32),
-                  child: DragTarget<Map<String, dynamic>>(
-                    onWillAccept: (_) => true,
-                    onAccept: (data) {
-                      setState(() {
-                        houses[data['fromHouse']]!.remove(data['topic']);
-                        houses[house]!.add(data['topic']);
-                      });
-                      _saveData();
-                    },
-                    builder: (context, _, __) => Column(
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                  child: IntrinsicWidth(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: Icon(Icons.delete, size: 18),
-                              onPressed: () => _deleteHouse(house),
+                      children: houseNames.map((house) {
+                        final topics = houses[house]!;
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 32),
+                          child: DragTarget<Map<String, dynamic>>(
+                            onWillAccept: (_) => true,
+                            onAccept: (data) {
+                              setState(() {
+                                houses[data['fromHouse']]!.remove(data['topic']);
+                                houses[house]!.add(data['topic']);
+                              });
+                              _saveData();
+                            },
+                            builder: (context, _, __) => Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.delete, size: 18),
+                                      onPressed: () => _deleteHouse(house),
+                                    ),
+                                    Text(house, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                                  ],
+                                ),
+                                ...List.generate(topics.length, (index) {
+                                  return _buildDraggableTopic(house, index, topics[index]);
+                                }),
+                                SizedBox(height: 20),
+                              ],
                             ),
-                            Text(house, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                          ],
-                        ),
-                        ...List.generate(topics.length, (index) {
-                          return _buildDraggableTopic(house, index, topics[index]);
-                        }),
-                        DragTarget<Map<String, dynamic>>(
-                          onWillAccept: (_) => true,
-                          onAccept: (data) {
-                            setState(() {
-                              houses[data['fromHouse']]!.remove(data['topic']);
-                              houses[house]!.add(data['topic']);
-                            });
-                            _saveData();
-                          },
-                          builder: (context, _, __) => Container(
-                            height: 20,
-                            color: Colors.transparent,
                           ),
-                        ),
-                      ],
+                        );
+                      }).toList(),
                     ),
                   ),
-                );
-              }).toList(),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),
     );
   }
+
 }

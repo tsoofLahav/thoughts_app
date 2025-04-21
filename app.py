@@ -60,13 +60,16 @@ def save_directories():
 def get_files(topic_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, section FROM files WHERE topic_id = %s", (topic_id,))
-    files = [{'id': r[0], 'name': r[1], 'section': r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT name, section FROM files WHERE topic_id = %s", (topic_id,))
+    grouped = {'plans': [], 'tasks': [], 'docs': []}
+    for name, section in cur.fetchall():
+        if section in grouped:
+            grouped[section].append(name)
     cur.close()
     conn.close()
-    return jsonify(files)
+    return jsonify(grouped)
 
-@app.route('/create_file', methods=['POST'])
+@app.route('/files', methods=['POST'])
 def create_file():
     data = request.get_json()
     conn = get_db_connection()

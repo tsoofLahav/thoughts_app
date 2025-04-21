@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'section_file_page.dart';
 import 'topic_manager.dart';
+import 'package:http/http.dart' as http;
 
 class TopicPage extends StatefulWidget {
   final String name;
@@ -26,13 +27,20 @@ class _TopicPageState extends State<TopicPage> {
     _loadTopicColor();
   }
 
-  void _loadFiles() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      plansFiles = _getList(prefs, 'plans');
-      tasksFiles = _getList(prefs, 'tasks');
-      docsFiles = _getList(prefs, 'docs');
-    });
+  Future<void> _loadFiles() async {
+    try {
+      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.name}'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          plansFiles = List<String>.from(data['plans']);
+          tasksFiles = List<String>.from(data['tasks']);
+          docsFiles = List<String>.from(data['docs']);
+        });
+      }
+    } catch (e) {
+      print('Failed to load files: $e');
+    }
   }
 
   void _loadTopicColor() {
@@ -54,23 +62,27 @@ class _TopicPageState extends State<TopicPage> {
     return [];
   }
 
-  void _saveFiles(String section) async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _saveFiles(String section) async {
     List<String> list;
-    switch (section) {
-      case 'plans':
-        list = plansFiles;
-        break;
-      case 'tasks':
-        list = tasksFiles;
-        break;
-      case 'docs':
-        list = docsFiles;
-        break;
-      default:
-        list = [];
+    if (section == 'plans') list = plansFiles;
+    else if (section == 'tasks') list = tasksFiles;
+    else list = docsFiles;
+
+    final body = {
+      'topic': widget.name,
+      'section': section,
+      'files': list
+    };
+
+    try {
+      await http.post(
+        Uri.parse('https://thoughts-app-92lm.onrender.com/files'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+    } catch (e) {
+      print('Failed to save files: $e');
     }
-    await prefs.setString('${widget.name}_$section', jsonEncode(list));
   }
 
   void _addFile(String section) {
