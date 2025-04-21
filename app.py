@@ -25,14 +25,18 @@ def ping():
 def get_directories():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT house, name, color FROM topics")
+    cur.execute("SELECT id, house, name, color FROM topics")
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
     houses = {}
-    for house, name, color in rows:
-        houses.setdefault(house, []).append({'name': name, 'color': color})
+    for topic_id, house, name, color in rows:
+        houses.setdefault(house, []).append({
+            'id': topic_id,
+            'name': name,
+            'color': color
+        })
     return jsonify(houses)
 
 # POST and replace all directories

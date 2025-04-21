@@ -30,9 +30,10 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
         houses = {
           for (var key in decoded.keys)
             key: List<Map<String, dynamic>>.from(decoded[key].map((e) => {
-                  'name': e['name'],
-                  'color': Color(e['color'])
-                }))
+              'id': e['id'],
+              'name': e['name'],
+              'color': Color(e['color'])
+            }))
         };
         houseNames = houses.keys.toList();
         TopicManager.topics = houses.values.expand((list) => list).toList();
@@ -48,9 +49,10 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
       final encoded = jsonEncode({
         for (var house in houses.keys)
           house: houses[house]!.map((t) => {
-                'name': t['name'],
-                'color': (t['color'] as Color).value,
-              }).toList()
+            'id': t['id'],
+            'name': t['name'],
+            'color': (t['color'] as Color).value,
+          }).toList()
       });
       await http.post(Uri.parse('$backendUrl/directories'),
           headers: {'Content-Type': 'application/json'},
@@ -100,9 +102,9 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
   void _submitNewTopic(String name, Color color) async {
     if (name.trim().isNotEmpty) {
       houses.putIfAbsent('כללי', () => []);
-      houses['כללי']!.add({'name': name.trim(), 'color': color});
+      houses['כללי']!.add({'name': name.trim(), 'color': color, 'id': null});
       await _saveData();
-      await _loadData(); // 🔄 reload from backend to reflect changes
+      await _loadData();
       Navigator.pop(context);
     }
   }
@@ -279,7 +281,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => TopicPage(name: topic['name']),
+                builder: (_) => TopicPage(topicId: topic['id'], topicName: topic['name']),
               ),
             );
           },
@@ -359,5 +361,4 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
       ),
     );
   }
-
 }

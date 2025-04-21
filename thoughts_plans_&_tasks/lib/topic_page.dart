@@ -6,9 +6,10 @@ import 'topic_manager.dart';
 import 'package:http/http.dart' as http;
 
 class TopicPage extends StatefulWidget {
-  final String name;
+  final int topicId;
+  final String topicName;
 
-  TopicPage({required this.name});
+  TopicPage({required this.topicId, required this.topicName});
 
   @override
   _TopicPageState createState() => _TopicPageState();
@@ -29,7 +30,7 @@ class _TopicPageState extends State<TopicPage> {
 
   Future<void> _loadFiles() async {
     try {
-      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.name}'));
+      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.topicName}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
@@ -45,7 +46,7 @@ class _TopicPageState extends State<TopicPage> {
 
   void _loadTopicColor() {
     final topic = TopicManager.topics.firstWhere(
-      (t) => t['name'] == widget.name,
+      (t) => t['name'] == widget.topicName,
       orElse: () => {'color': Colors.white},
     );
     final baseColor = topic['color'] as Color;
@@ -54,7 +55,7 @@ class _TopicPageState extends State<TopicPage> {
   }
 
   List<String> _getList(SharedPreferences prefs, String section) {
-    final key = '${widget.name}_$section';
+    final key = '${widget.topicName}_$section';
     final stored = prefs.getString(key);
     if (stored != null) {
       return List<String>.from(jsonDecode(stored));
@@ -69,7 +70,7 @@ class _TopicPageState extends State<TopicPage> {
     else list = docsFiles;
 
     final body = {
-      'topic': widget.name,
+      'topic': widget.topicName,
       'section': section,
       'files': list
     };
@@ -161,7 +162,7 @@ class _TopicPageState extends State<TopicPage> {
       context,
       MaterialPageRoute(
         builder: (_) => SectionFilePage(
-          topicName: widget.name,
+          topicName: widget.topicName,
           section: section,
           fileName: fileName,
         ),
@@ -254,7 +255,7 @@ class _TopicPageState extends State<TopicPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: backgroundColor ?? Colors.white,
-        appBar: AppBar(title: Text(widget.name)),
+        appBar: AppBar(title: Text(widget.topicName)),
         body: Column(
           children: [
             _buildSection("תוכניות", plansFiles, 'plans'),
