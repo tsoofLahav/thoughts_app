@@ -36,6 +36,16 @@ class _GreenNoteHistoryPageState extends State<GreenNoteHistoryPage> {
     }
   }
 
+  Future<void> _deleteNote(String signature) async {
+    final res = await http.delete(Uri.parse('$backendUrl/green_notes/$signature'));
+    if (res.statusCode == 200) {
+      setState(() {
+        signatures.remove(signature);
+        selectedNote = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -69,6 +79,37 @@ class _GreenNoteHistoryPageState extends State<GreenNoteHistoryPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: Text('אישור מחיקה'),
+                                      content: Text('למחוק את הפתק הזה לצמיתות?'),
+                                      actions: [
+                                        TextButton(
+                                            child: Text('ביטול'),
+                                            onPressed: () => Navigator.pop(context, false)),
+                                        TextButton(
+                                            child: Text('מחק'),
+                                            onPressed: () => Navigator.pop(context, true)),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true) {
+                                    final signature = selectedNote!['signature'];
+                                    await _deleteNote(signature);
+                                  }
+                                },
+                                icon: Icon(Icons.delete),
+                                label: Text('מחק פתק'),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent),
+                              ),
+                            ),
+                            SizedBox(height: 16),
                             Text('3 דברים טובים מאתמול:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             SizedBox(height: 8),
                             Text('1. ${selectedNote!['good_1'] ?? ''}'),

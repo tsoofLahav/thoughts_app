@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'topic_page.dart';
 import 'topic_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -14,6 +14,7 @@ class DirectoriesPage extends StatefulWidget {
 class _DirectoriesPageState extends State<DirectoriesPage> {
   Map<String, List<Map<String, dynamic>>> houses = {};
   List<String> houseNames = [];
+  final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
   void initState() {
@@ -21,42 +22,42 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
     _loadData();
   }
 
-  void _loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final houseData = prefs.getString('houses');
-
-    if (houseData != null) {
-      final decoded = jsonDecode(houseData);
-      houses = {
-        for (var key in decoded.keys)
-          key: List<Map<String, dynamic>>.from(decoded[key].map((e) => {
-                'name': e['name'],
-                'color': Color(e['color']),
-              }))
-      };
-      houseNames = houses.keys.toList();
-    } else {
-      houses['כללי'] = [];
-      houseNames = ['כללי'];
+  Future<void> _loadData() async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/directories'));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        houses = {
+          for (var key in decoded.keys)
+            key: List<Map<String, dynamic>>.from(decoded[key].map((e) => {
+                  'name': e['name'],
+                  'color': Color(e['color'])
+                }))
+        };
+        houseNames = houses.keys.toList();
+        TopicManager.topics = houses.values.expand((list) => list).toList();
+        setState(() {});
+      }
+    } catch (e) {
+      print('Failed to load directories: $e');
     }
-
-    // 💡 Fix: Update TopicManager
-    TopicManager.topics = houses.values.expand((list) => list).toList();
-
-    setState(() {});
   }
 
-
   Future<void> _saveData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode({
-      for (var house in houses.keys)
-        house: houses[house]!.map((t) => {
-              'name': t['name'],
-              'color': (t['color'] as Color).value,
-            }).toList()
-    });
-    await prefs.setString('houses', encoded);
+    try {
+      final encoded = jsonEncode({
+        for (var house in houses.keys)
+          house: houses[house]!.map((t) => {
+                'name': t['name'],
+                'color': (t['color'] as Color).value,
+              }).toList()
+      });
+      await http.post(Uri.parse('$backendUrl/directories'),
+          headers: {'Content-Type': 'application/json'},
+          body: encoded);
+    } catch (e) {
+      print('Failed to save directories: $e');
+    }
   }
 
   void _addTopic() {
@@ -99,6 +100,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
   void _submitNewTopic(String name, Color color) {
     if (name.trim().isNotEmpty) {
       setState(() {
+        houses.putIfAbsent('כללי', () => []);
         houses['כללי']!.add({'name': name.trim(), 'color': color});
       });
       _saveData();

@@ -20,15 +20,40 @@ def ping():
     return 'pong', 200
 
 # ---------- TOPICS ----------
-@app.route('/topics', methods=['GET'])
-def get_topics():
+# GET all topics organized by houses
+@app.route('/directories', methods=['GET'])
+def get_directories():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, color FROM topics")
-    topics = [{'id': r[0], 'name': r[1], 'color': r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT house, name, color FROM topics")
+    rows = cur.fetchall()
     cur.close()
     conn.close()
-    return jsonify(topics)
+
+    houses = {}
+    for house, name, color in rows:
+        houses.setdefault(house, []).append({'name': name, 'color': color})
+    return jsonify(houses)
+
+# POST and replace all directories
+@app.route('/directories', methods=['POST'])
+def save_directories():
+    data = request.get_json()
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM topics")  # wipe old
+    for house, topics in data.items():
+        for topic in topics:
+            cur.execute(
+                "INSERT INTO topics (house, name, color) VALUES (%s, %s, %s)",
+                (house, topic['name'], topic['color'])
+            )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'saved'})
 
 # ---------- FILES ----------
 @app.route('/files/<int:topic_id>', methods=['GET'])
