@@ -59,6 +59,20 @@ def save_directories():
     conn.close()
     return jsonify({'status': 'saved'})
 
+@app.route('/topic_details/<int:topic_id>', methods=['GET'])
+def topic_details(topic_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name, color FROM topics WHERE id = %s", (topic_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if row:
+        return jsonify({'name': row[0], 'color': row[1]})
+    else:
+        return jsonify({'error': 'Topic not found'}), 404
+
 # ---------- FILES ----------
 
 @app.route('/files/<int:topic_id>', methods=['GET'])

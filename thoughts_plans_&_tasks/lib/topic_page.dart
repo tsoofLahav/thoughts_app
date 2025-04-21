@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'section_file_page.dart';
-import 'topic_manager.dart';
 
 class TopicPage extends StatefulWidget {
   final int topicId;
-  final String topicName;
 
-  TopicPage({required this.topicId, required this.topicName});
+  TopicPage({required this.topicId});
 
   @override
   _TopicPageState createState() => _TopicPageState();
@@ -19,61 +17,46 @@ class _TopicPageState extends State<TopicPage> {
   List<String> tasksFiles = [];
   List<String> docsFiles = [];
   Color? backgroundColor;
+  String topicName = '';
+  final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
   void initState() {
     super.initState();
+    _loadTopicDetails();
     _loadFiles();
-    _loadTopicColor();
+  }
+
+  Future<void> _loadTopicDetails() async {
+    try {
+      final res = await http.get(Uri.parse('$backendUrl/topic_details/${widget.topicId}'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          topicName = data['name'];
+          final baseColor = Color(data['color']);
+          final hsl = HSLColor.fromColor(baseColor);
+          backgroundColor = hsl.withLightness((hsl.lightness + 0.6).clamp(0.75, 0.92)).toColor();
+        });
+      }
+    } catch (e) {
+      print('Failed to load topic details: $e');
+    }
   }
 
   Future<void> _loadFiles() async {
     try {
-      final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${widget.topicId}'));
+      final res = await http.get(Uri.parse('$backendUrl/files/${widget.topicId}'));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body); // it's a map
+        final data = jsonDecode(res.body);
         setState(() {
           plansFiles = List<String>.from(data['plans'] ?? []);
           tasksFiles = List<String>.from(data['tasks'] ?? []);
-          docsFiles  = List<String>.from(data['docs']  ?? []);
+          docsFiles = List<String>.from(data['docs'] ?? []);
         });
       }
     } catch (e) {
       print('Failed to load files: $e');
-    }
-  }
-
-
-  void _loadTopicColor() {
-    final topic = TopicManager.topics.firstWhere(
-      (t) => t['id'] == widget.topicId,
-      orElse: () => {'color': Colors.white},
-    );
-    final baseColor = topic['color'] as Color;
-    final hsl = HSLColor.fromColor(baseColor);
-    backgroundColor = hsl.withLightness((hsl.lightness + 0.6).clamp(0.75, 0.92)).toColor();
-  }
-
-  Future<void> _saveFiles(String section) async {
-    List<String> list;
-    if (section == 'plans') list = plansFiles;
-    else if (section == 'tasks') list = tasksFiles;
-    else list = docsFiles;
-
-    for (var name in list) {
-      try {
-        await http.post(
-          Uri.parse('https://thoughts-app-92lm.onrender.com/create_file'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'topic_id': widget.topicId,
-            'section': section,
-            'name': name
-          }),
-        );
-      } catch (e) {
-        print('Failed to save file "$name": $e');
-      }
     }
   }
 
@@ -87,65 +70,62 @@ class _TopicPageState extends State<TopicPage> {
           textDirection: TextDirection.rtl,
           decoration: InputDecoration(hintText: 'שם הקובץ'),
           onChanged: (value) => fileName = value,
-          onSubmitted: (_) {
-            if (fileName.trim().isEmpty) return;
-            Navigator.pop(context);
-            setState(() {
-              _addToList(section, fileName.trim());
-            });
-          },
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               if (fileName.trim().isEmpty) return;
               Navigator.pop(context);
-              setState(() {
-                _addToList(section, fileName.trim());
-              });
+              final body = {
+                'topic_id': widget.topicId,
+                'section': section,
+                'name': fileName.trim()
+              };
+              try {
+                final res = await http.post(
+                  Uri.parse('$backendUrl/files/add'),
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode(body),
+                );
+                if (res.statusCode == 200) {
+                  setState(() {
+                    if (section == 'plans') plansFiles.add(fileName.trim());
+                    if (section == 'tasks') tasksFiles.add(fileName.trim());
+                    if (section == 'docs') docsFiles.add(fileName.trim());
+                  });
+                }
+              } catch (e) {
+                print('Failed to add file: $e');
+              }
             },
-            child: Text('צור')),
+            child: Text('צור'),
+          ),
         ],
       ),
     );
   }
 
-  void _addToList(String section, String fileName) {
-    if (section == 'plans') plansFiles.add(fileName);
-    if (section == 'tasks') tasksFiles.add(fileName);
-    if (section == 'docs') docsFiles.add(fileName);
-    _saveFiles(section);
-  }
-
-  void _editFile(String section, int index, String oldName) {
-    String newName = oldName;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('ערוך שם הקובץ'),
-        content: TextField(
-          textDirection: TextDirection.rtl,
-          controller: TextEditingController(text: oldName),
-          onChanged: (value) => newName = value,
-          onSubmitted: (_) {
-            if (newName.trim().isEmpty) return;
-            _renameFile(section, index, newName.trim());
-            Navigator.pop(context);
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
-          TextButton(
-            onPressed: () {
-              if (newName.trim().isEmpty) return;
-              _renameFile(section, index, newName.trim());
-              Navigator.pop(context);
-            },
-            child: Text('שמור')),
-        ],
-      ),
-    );
+  void _deleteFile(String section, String fileName) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$backendUrl/files/delete'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'topic_id': widget.topicId,
+          'name': fileName
+        }),
+      );
+      if (res.statusCode == 200) {
+        setState(() {
+          if (section == 'plans') plansFiles.remove(fileName);
+          if (section == 'tasks') tasksFiles.remove(fileName);
+          if (section == 'docs') docsFiles.remove(fileName);
+        });
+      }
+    } catch (e) {
+      print('Failed to delete file: $e');
+    }
   }
 
   void _openFile(String section, String fileName) {
@@ -153,7 +133,7 @@ class _TopicPageState extends State<TopicPage> {
       context,
       MaterialPageRoute(
         builder: (_) => SectionFilePage(
-          topicName: widget.topicName,
+          topicId: widget.topicId,
           section: section,
           fileName: fileName,
         ),
@@ -161,25 +141,7 @@ class _TopicPageState extends State<TopicPage> {
     );
   }
 
-  void _renameFile(String section, int index, String newName) {
-    setState(() {
-      if (section == 'plans') plansFiles[index] = newName;
-      if (section == 'tasks') tasksFiles[index] = newName;
-      if (section == 'docs') docsFiles[index] = newName;
-    });
-    _saveFiles(section);
-  }
-
-  void _deleteFile(String section, int index) {
-    setState(() {
-      if (section == 'plans') plansFiles.removeAt(index);
-      if (section == 'tasks') tasksFiles.removeAt(index);
-      if (section == 'docs') docsFiles.removeAt(index);
-    });
-    _saveFiles(section);
-  }
-
-  Widget _buildSection(String label, List<String> files, String key) {
+  Widget _buildSection(String label, List<String> files, String section) {
     return Expanded(
       child: Container(
         margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -197,7 +159,7 @@ class _TopicPageState extends State<TopicPage> {
                 Spacer(),
                 IconButton(
                   icon: Icon(Icons.add),
-                  onPressed: () => _addFile(key),
+                  onPressed: () => _addFile(section),
                 )
               ],
             ),
@@ -217,17 +179,15 @@ class _TopicPageState extends State<TopicPage> {
                           0,
                         ),
                         items: [
-                          PopupMenuItem(value: 'rename', child: Text('שנה שם')),
                           PopupMenuItem(value: 'delete', child: Text('מחק')),
                         ],
                       );
 
-                      if (selected == 'rename') _editFile(key, index, files[index]);
-                      if (selected == 'delete') _deleteFile(key, index);
+                      if (selected == 'delete') _deleteFile(section, files[index]);
                     },
                     child: ListTile(
                       title: Text(files[index]),
-                      onTap: () => _openFile(key, files[index]),
+                      onTap: () => _openFile(section, files[index]),
                     ),
                   );
                 },
@@ -245,7 +205,7 @@ class _TopicPageState extends State<TopicPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: backgroundColor ?? Colors.white,
-        appBar: AppBar(title: Text(widget.topicName)),
+        appBar: AppBar(title: Text(topicName)),
         body: Column(
           children: [
             _buildSection("תוכניות", plansFiles, 'plans'),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:ui' as ui;
 import 'green_note_page.dart';
 import 'directories_page.dart';
 import 'section_file_page.dart';
