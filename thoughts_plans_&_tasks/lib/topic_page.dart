@@ -176,14 +176,34 @@ class _TopicPageState extends State<TopicPage> {
     _saveFiles(section);
   }
 
-  void _deleteFile(String section, int index) {
+  void _deleteFile(String section, int index) async {
+    String fileName;
+    if (section == 'plans') fileName = plansFiles[index];
+    else if (section == 'tasks') fileName = tasksFiles[index];
+    else fileName = docsFiles[index];
+
+    try {
+      final res = await http.post(
+        Uri.parse('https://thoughts-app-92lm.onrender.com/files/delete'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'topic_id': widget.topicId,
+          'section': section,
+          'name': fileName
+        }),
+      );
+      print('Deleted file "$fileName" from $section (status: ${res.statusCode})');
+    } catch (e) {
+      print('Failed to delete file "$fileName": $e');
+    }
+
     setState(() {
       if (section == 'plans') plansFiles.removeAt(index);
       if (section == 'tasks') tasksFiles.removeAt(index);
       if (section == 'docs') docsFiles.removeAt(index);
     });
-    _saveFiles(section);
   }
+
 
   Widget _buildSection(String label, List<String> files, String key) {
     return Expanded(

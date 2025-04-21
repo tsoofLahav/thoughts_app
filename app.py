@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import psycopg2
 import os
-from flask import jsonify
+from flask import jsonify, json
 
 
 app = Flask(__name__)
@@ -110,6 +110,45 @@ def delete_file():
     cur.close()
     conn.close()
     return jsonify({'status': 'deleted'})
+
+@app.route('/file_content/<int:file_id>/<section>', methods=['GET'])
+def get_file_content(file_id, section):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT content FROM file_entries
+        WHERE file_id = %s AND section = %s
+        ORDER BY created_at
+    """, (file_id, section))
+    content = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify(content)
+
+
+@app.route('/file_content', methods=['POST'])
+def save_file_content():
+    data = request.get_json()
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Remove existing content
+    cur.execute("""
+        DELETE FROM file_entries
+        WHERE file_id = %s AND section = %s
+    """, (data['file_id'], data['section']))
+
+    # Insert new content
+    for entry in data['content']:
+        cur.execute("""
+            INSERT INTO file_entries (file_id, section, content)
+            VALUES (%s, %s, %s)
+        """, (data['file_id'], data['section'], json.dumps(entry)))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'saved'})
 
 
 # ---------- ENTRIES ----------
