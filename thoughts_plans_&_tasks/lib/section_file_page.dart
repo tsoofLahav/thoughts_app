@@ -73,7 +73,7 @@ class _SectionFilePageState extends State<SectionFilePage> {
 
     try {
       final res = await http.post(
-        Uri.parse('$backendUrl/files/update_content'),
+        Uri.parse('$backendUrl/file_content'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
@@ -113,7 +113,7 @@ class _SectionFilePageState extends State<SectionFilePage> {
   Future<void> _toggleLink() async {
     try {
       final res = await http.post(
-        Uri.parse('$backendUrl/files/toggle_link'),
+        Uri.parse('$backendUrl/file_link/toggle'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'topic_id': widget.topicId,

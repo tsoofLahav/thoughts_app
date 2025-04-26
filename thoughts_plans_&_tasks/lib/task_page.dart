@@ -54,7 +54,8 @@ class _TaskPageState extends State<TaskPage> {
       for (int i = 0; i < files.length; i++) {
         final file = files[i];
         updated.add({
-          'file_id': file['id'],
+          'topic_id': file['topic_id'],
+          'file_name': file['name'],
           'section': section,
           'order_index': i
         });
@@ -109,7 +110,7 @@ class _TaskPageState extends State<TaskPage> {
               context,
               MaterialPageRoute(
                 builder: (_) => SectionFilePage(
-                  fileId: file['id'],
+                  topicId: file['topic_id'],
                   section: 'tasks',
                   fileName: file['name'],
                 ),

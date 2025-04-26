@@ -19,45 +19,176 @@ def get_db_connection():
 def ping():
     return 'pong', 200
 
+# ---------- HOUSES ----------
+@app.route('/add_house', methods=['POST'])
+def add_house():
+    data = request.get_json()
+    house_name = data['name']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO houses (name) VALUES (%s) ON CONFLICT DO NOTHING", (house_name,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
+@app.route('/delete_house', methods=['POST'])
+def delete_house():
+    data = request.get_json()
+    house_name = data['name']
+
+    if house_name == 'כללי':
+        return jsonify({'error': 'Cannot delete the general house'}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 1. Move topics to 'כללי'
+    cur.execute(
+        "UPDATE topics SET house = %s WHERE house = %s",
+        ('כללי', house_name)
+    )
+
+    # 2. Delete the house
+    cur.execute(
+        "DELETE FROM houses WHERE name = %s",
+        (house_name,)
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
+@app.route('/houses', methods=['GET'])
+def get_houses():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM houses")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    house_list = [row[0] for row in rows]
+    return jsonify(house_list)
+
+@app.route('/edit_house', methods=['POST'])
+def edit_house():
+    data = request.get_json()
+    old_name = data['old_name']
+    new_name = data['new_name']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Update house name in houses table
+    cur.execute("UPDATE houses SET name = %s WHERE name = %s", (new_name, old_name))
+    # Also update house field in topics
+    cur.execute("UPDATE topics SET house = %s WHERE house = %s", (new_name, old_name))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
+
 # ---------- TOPICS ----------
 # GET all topics organized by houses
+
 @app.route('/directories', methods=['GET'])
 def get_directories():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, house, name, color FROM topics")
+    cur.execute("SELECT id, house, name, color, \"order\" FROM topics ORDER BY house, \"order\" ASC")
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
     houses = {}
-    for topic_id, house, name, color in rows:
+    for topic_id, house, name, color, order in rows:
         houses.setdefault(house, []).append({
             'id': topic_id,
             'name': name,
-            'color': color
+            'color': color,
+            'order': order
         })
     return jsonify(houses)
 
-# POST and replace all directories
-@app.route('/directories', methods=['POST'])
-def save_directories():
+
+@app.route('/edit_topic', methods=['POST'])
+def edit_topic():
     data = request.get_json()
+    topic_id = data['id']
+    name = data['name']
+    color = data['color']
+
     conn = get_db_connection()
     cur = conn.cursor()
-
-    cur.execute("DELETE FROM topics")  # wipe old
-    for house, topics in data.items():
-        for topic in topics:
-            cur.execute(
-                "INSERT INTO topics (house, name, color) VALUES (%s, %s, %s)",
-                (house, topic['name'], topic['color'])
-            )
-
+    cur.execute("""
+        UPDATE topics SET name = %s, color = %s WHERE id = %s
+    """, (name, color, topic_id))
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'saved'})
+
+    return '', 200
+
+
+@app.route('/add_topic', methods=['POST'])
+def add_topic():
+    data = request.get_json()
+    name = data['name']
+    color = data['color']
+    house = data['house']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO topics (name, color, house, "order")
+        VALUES (%s, %s, %s, %s)
+    """, (name, color, house, 0))  # default new topic at order=0
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
+
+@app.route('/delete_topic', methods=['POST'])
+def delete_topic():
+    data = request.get_json()
+    topic_id = data['id']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM topics WHERE id = %s", (topic_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
+
+@app.route('/move_topic', methods=['POST'])
+def move_topic():
+    data = request.get_json()
+    topic_id = data['topic_id']
+    new_house = data['new_house']
+    new_order = data['new_order']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE topics SET house = %s, "order" = %s WHERE id = %s
+    """, (new_house, new_order, topic_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return '', 200
+
 
 @app.route('/topic_details/<int:topic_id>', methods=['GET'])
 def topic_details(topic_id):

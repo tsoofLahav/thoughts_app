@@ -102,7 +102,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   void _toggleLink(String fileName, int topicId) async {
     try {
       await http.post(
-        Uri.parse('https://thoughts-app-92lm.onrender.com/files/toggle_link'),
+        Uri.parse('https://thoughts-app-92lm.onrender.com/file_link/toggle'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'name': fileName, 'topic_id': topicId}),
       );
@@ -111,6 +111,92 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       print('Failed to toggle link: $e');
     }
   }
+////////////////////////////save to file///////////////
+  void _saveToFile() async {
+    String selectedText = '';
+    final selection = _mainNoteController.selection;
+    if (!selection.isCollapsed) {
+      selectedText = _mainNoteController.text.substring(selection.start, selection.end).trim();
+    } else {
+      List<String> lines = _mainNoteController.text.trim().split('\n');
+      selectedText = lines.isNotEmpty ? lines.last.trim() : '';
+    }
+
+    if (selectedText.isEmpty) return;
+
+    // 1. Fetch Topics (from /directories)
+    final topicsRes = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/directories'));
+    if (topicsRes.statusCode != 200) return;
+    final Map<String, dynamic> houses = jsonDecode(topicsRes.body);
+
+    // Flatten topics
+    final List<Map<String, dynamic>> topics = [];
+    houses.forEach((house, topicsList) {
+      for (var t in topicsList) {
+        topics.add(t);
+      }
+    });
+
+    final topic = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('בחר נושא'),
+        children: topics.map((t) => SimpleDialogOption(
+          onPressed: () => Navigator.pop(context, t),
+          child: Text(t['name'], style: TextStyle(color: Color(t['color']))),
+        )).toList(),
+      ),
+    );
+    if (topic == null) return;
+
+    // 2. Fetch Files for Selected Topic (from /files/<topic_id>)
+    final filesRes = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${topic['id']}'));
+    if (filesRes.statusCode != 200) return;
+    final Map<String, dynamic> groupedFiles = jsonDecode(filesRes.body);
+
+    // Flatten files
+    final List<Map<String, dynamic>> files = [];
+    groupedFiles.forEach((section, fileNames) {
+      for (var name in fileNames) {
+        files.add({'name': name, 'section': section});
+      }
+    });
+
+    final file = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('בחר קובץ'),
+        children: files.map((f) => SimpleDialogOption(
+          onPressed: () => Navigator.pop(context, f),
+          child: Text('${f['name']} (${f['section']})'),
+        )).toList(),
+      ),
+    );
+    if (file == null) return;
+
+    // 3. Fetch File Content (from /file_info?topic_id=X&file_name=Y)
+    final contentRes = await http.get(Uri.parse(
+      'https://thoughts-app-92lm.onrender.com/file_info?topic_id=${topic['id']}&file_name=${Uri.encodeComponent(file['name'])}',
+    ));
+    if (contentRes.statusCode != 200) return;
+    List<dynamic> content = jsonDecode(contentRes.body)['content'];
+
+    // 4. Add New Points
+    List<String> points = selectedText.split('\n').where((s) => s.trim().isNotEmpty).toList();
+    content.addAll(points);
+
+    // 5. Update File Content (POST to /file_content)
+    await http.post(
+      Uri.parse('https://thoughts-app-92lm.onrender.com/file_content'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'topic_id': topic['id'],
+        'name': file['name'],
+        'content': content,
+      }),
+    );
+  }
+////////////////////////////save to file///////////////  
 
   void _scrollRight() {
     _scrollController.animateTo(
@@ -174,22 +260,41 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: TextField(
-                      controller: _mainNoteController,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      textDirection: TextDirection.rtl,
-                      decoration: InputDecoration.collapsed(
-                        hintText: 'כתוב את המחשבות שלך כאן...',
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: TextField(
+                            controller: _mainNoteController,
+                            focusNode: _focusNode,
+                            maxLines: null,
+                            textDirection: TextDirection.rtl,
+                            decoration: InputDecoration.collapsed(
+                              hintText: 'כתוב את המחשבות שלך כאן...',
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      SizedBox(height: 10),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.tealAccent,
+                          foregroundColor: Colors.teal.shade900,
+                          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        onPressed: _saveToFile,
+                        child: Text('שמירה לקובץ', style: TextStyle(fontSize: 16)),
+                      ),
+                    ],
                   ),
                 ),
               ),
