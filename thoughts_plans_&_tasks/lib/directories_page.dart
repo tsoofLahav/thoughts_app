@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/gestures.dart';
 import 'topic_page.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform; // add this if not already imported
 
 class DirectoriesPage extends StatefulWidget {
   @override
@@ -49,80 +51,126 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
     }
   }
 
-  Future<void> _addHouse() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+  Future<void> _openHouseDialog({String? oldName}) async {
+    final controller = TextEditingController(text: oldName ?? '');
+    final title = oldName == null ? 'הוסף בית' : 'ערוך בית';
+    final action = oldName == null ? 'צור' : 'שמור';
+
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('הוסף בית'),
-        content: TextField(controller: controller, decoration: InputDecoration(hintText: 'שם הבית')),
+        title: Text(title, textDirection: TextDirection.rtl), // ✅ Title right-aligned
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textDirection: TextDirection.rtl, // ✅ Text field right-aligned
+          onSubmitted: (value) => Navigator.pop(context, value.trim()), // ✅ Enter acts as save
+          decoration: InputDecoration(hintText: 'שם הבית'),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, null), child: Text('ביטול')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text('צור')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: Text('ביטול', textDirection: TextDirection.rtl), // ✅ Right
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(action, textDirection: TextDirection.rtl), // ✅ Right
+          ),
         ],
       ),
     );
-    if (name != null && name.isNotEmpty) {
-      await http.post(Uri.parse('$backendUrl/add_house'), body: jsonEncode({'name': name}), headers: {'Content-Type': 'application/json'});
+
+    if (result != null && result.isNotEmpty) {
+      if (oldName == null) {
+        await http.post(Uri.parse('$backendUrl/add_house'),
+            body: jsonEncode({'name': result}),
+            headers: {'Content-Type': 'application/json'});
+      } else {
+        await http.post(Uri.parse('$backendUrl/edit_house'),
+            body: jsonEncode({'old_name': oldName, 'new_name': result}),
+            headers: {'Content-Type': 'application/json'});
+      }
       _loadData();
     }
   }
 
-  Future<void> _addTopic(String house) async {
-    final nameController = TextEditingController();
-    Color selectedColor = Colors.teal;
+
+
+  Future<void> _openTopicDialog({String? house, Map<String, dynamic>? oldTopic}) async {
+    final nameController = TextEditingController(text: oldTopic?['name'] ?? '');
+    Color selectedColor = oldTopic?['color'] ?? Colors.teal;
+    final title = oldTopic == null ? 'הוסף נושא' : 'ערוך נושא';
+    final action = oldTopic == null ? 'צור' : 'שמור';
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('הוסף נושא'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameController, decoration: InputDecoration(hintText: 'שם הנושא')),
-          SizedBox(height: 10),
-          GestureDetector(
-            onTap: () async {
-              final picked = await showDialog<Color>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('בחר צבע'),
-                  content: SingleChildScrollView(
-                    child: BlockPicker(
-                      pickerColor: selectedColor,
-                      onColorChanged: (color) => Navigator.pop(context, color),
-                    ),
-                  ),
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title, textDirection: TextDirection.rtl),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end, // ✅ Align right
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  textDirection: TextDirection.rtl,
+                  onSubmitted: (_) {
+                    Navigator.pop(context, {
+                      'name': nameController.text.trim(),
+                      'color': selectedColor.value,
+                    });
+                  },
+                  decoration: InputDecoration(hintText: 'שם הנושא'),
                 ),
-              );
-              if (picked != null) {
-                setState(() => selectedColor = picked);
-              }
-            },
-            child: Container(
-              width: double.infinity,
-              height: 40,
-              color: selectedColor,
-              child: Center(child: Text('בחר צבע', style: TextStyle(color: Colors.white))),
+                SizedBox(height: 12),
+                Text('בחר צבע:', textDirection: TextDirection.rtl), // ✅ Small simple label
+                SizedBox(height: 8),
+                ColorPicker(
+                  pickerColor: selectedColor,
+                  onColorChanged: (color) {
+                    selectedColor = color;
+                    // No setState needed inside dialog normally unless you really want live effect
+                  },
+                  enableAlpha: false,
+                  portraitOnly: true,
+                  labelTypes: [],
+                ),
+              ],
             ),
           ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, null), child: Text('ביטול')),
-          TextButton(
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: Text('ביטול', textDirection: TextDirection.rtl),
+            ),
+            TextButton(
               onPressed: () => Navigator.pop(context, {
-                    'name': nameController.text.trim(),
-                    'color': selectedColor.value,
-                  }),
-              child: Text('צור')),
-        ],
-      ),
+                'name': nameController.text.trim(),
+                'color': selectedColor.value,
+              }),
+              child: Text(action, textDirection: TextDirection.rtl),
+            ),
+          ],
+        );
+      },
     );
 
     if (result != null && result['name'].isNotEmpty) {
-      await http.post(Uri.parse('$backendUrl/add_topic'),
-          body: jsonEncode({'name': result['name'], 'color': result['color'], 'house': house}),
-          headers: {'Content-Type': 'application/json'});
+      if (oldTopic == null) {
+        await http.post(Uri.parse('$backendUrl/add_topic'),
+            body: jsonEncode({'name': result['name'], 'color': result['color'], 'house': house}),
+            headers: {'Content-Type': 'application/json'});
+      } else {
+        await http.post(Uri.parse('$backendUrl/edit_topic'),
+            body: jsonEncode({'id': oldTopic['id'], 'name': result['name'], 'color': result['color']}),
+            headers: {'Content-Type': 'application/json'});
+      }
       _loadData();
     }
   }
+
 
   void _moveTopic(int topicId, String newHouse, int newOrder) async {
     await http.post(Uri.parse('$backendUrl/move_topic'),
@@ -134,68 +182,135 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
   void _onTopicRightClick(Map<String, dynamic> topic, String house, Offset position) {
     showMenu(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, 0, 0),
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy), // ✅ Next to pointer
       items: [
-        PopupMenuItem(child: Text('ערוך'), onTap: () {
-          // TODO: Edit topic dialog
-        }),
-        PopupMenuItem(child: Text('מחק'), onTap: () async {
-          await http.post(Uri.parse('$backendUrl/delete_topic'),
-              body: jsonEncode({'id': topic['id']}), headers: {'Content-Type': 'application/json'});
-          _loadData();
-        }),
+        PopupMenuItem(
+          child: Text('ערוך'),
+          onTap: () async {
+            await Future.delayed(Duration.zero); // ✅ Let the menu close first
+            _openTopicDialog(oldTopic: topic);   // ✅ Open edit topic dialog
+          },
+        ),
+        PopupMenuItem(
+          child: Text('מחק'),
+          onTap: () async {
+            await Future.delayed(Duration.zero); // ✅ Let the menu close first
+            await http.post(
+              Uri.parse('$backendUrl/delete_topic'),
+              body: jsonEncode({'id': topic['id']}),
+              headers: {'Content-Type': 'application/json'},
+            );
+            _loadData();
+          },
+        ),
       ],
     );
   }
 
   void _onHouseRightClick(String house, Offset position) {
-    if (house == 'כללי') return; // prevent deleting general house
+    if (house == 'כללי') return; // ✅ Prevent deleting the general house
     showMenu(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, 0, 0),
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy), // ✅ Next to pointer
       items: [
-        PopupMenuItem(child: Text('ערוך'), onTap: () {
-          // TODO: Edit house dialog
-        }),
-        PopupMenuItem(child: Text('מחק'), onTap: () async {
-          await http.post(Uri.parse('$backendUrl/delete_house'),
-              body: jsonEncode({'name': house}), headers: {'Content-Type': 'application/json'});
-          _loadData();
-        }),
+        PopupMenuItem(
+          child: Text('ערוך'),
+          onTap: () async {
+            await Future.delayed(Duration.zero); // ✅ Let the menu close first
+            _openHouseDialog(oldName: house);     // ✅ Open edit house dialog
+          },
+        ),
+        PopupMenuItem(
+          child: Text('מחק'),
+          onTap: () async {
+            await Future.delayed(Duration.zero); // ✅ Let the menu close first
+            await http.post(
+              Uri.parse('$backendUrl/delete_house'),
+              body: jsonEncode({'name': house}),
+              headers: {'Content-Type': 'application/json'},
+            );
+            _loadData();
+          },
+        ),
       ],
     );
   }
 
+
   Widget _buildTopicTile(Map<String, dynamic> topic, String house) {
-    return LongPressDraggable<Map<String, dynamic>>(
-      data: {'topic': topic, 'fromHouse': house},
-      feedback: Material(
-        child: Container(
-          padding: EdgeInsets.all(8),
-          decoration: BoxDecoration(color: topic['color'], borderRadius: BorderRadius.circular(8)),
-          child: Text(topic['name'], style: TextStyle(color: Colors.white)),
-        ),
-      ),
-      child: Listener(
-        onPointerDown: (event) {
-          if (event.kind == PointerDeviceKind.mouse && event.buttons == kSecondaryMouseButton) {
-            _onTopicRightClick(topic, house, event.position);
-          }
-        },
-        child: GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TopicPage(topicId: topic['id']))),
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              tileColor: topic['color'],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(topic['name'], style: TextStyle(color: Colors.white, fontSize: 13)),
+    final isDesktop = kIsWeb || Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+    final draggableWidget = isDesktop
+        ? Draggable<Map<String, dynamic>>( // For desktop (mouse drag)
+            data: {'topic': topic, 'fromHouse': house},
+            feedback: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 160,
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(color: topic['color'], borderRadius: BorderRadius.circular(16)),
+                child: Center(
+                  child: Text(
+                    topic['name'],
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
             ),
+            childWhenDragging: Opacity(opacity: 0.5, child: _topicTileContent(topic)),
+            child: _topicTileContent(topic),
+          )
+        : LongPressDraggable<Map<String, dynamic>>( // For mobile (long-press drag)
+            data: {'topic': topic, 'fromHouse': house},
+            feedback: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 160,
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(color: topic['color'], borderRadius: BorderRadius.circular(16)),
+                child: Center(
+                  child: Text(
+                    topic['name'],
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+            childWhenDragging: Opacity(opacity: 0.5, child: _topicTileContent(topic)),
+            child: _topicTileContent(topic),
+          );
+
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.mouse && event.buttons == kSecondaryMouseButton) {
+          _onTopicRightClick(topic, house, event.position);
+        }
+      },
+      child: draggableWidget,
+    );
+  }
+
+  Widget _topicTileContent(Map<String, dynamic> topic) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TopicPage(topicId: topic['id']))),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          tileColor: topic['color'],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            topic['name'],
+            style: TextStyle(color: Colors.white, fontSize: 13),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
     );
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -206,46 +321,99 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
         appBar: AppBar(
           title: Text('נושאים', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           actions: [
-            IconButton(icon: Icon(Icons.add_box), onPressed: _addHouse),
+            IconButton(icon: Icon(Icons.add_box), onPressed: () => _openHouseDialog()),
           ],
         ),
         body: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Row(
-            children: houseNames.map((house) {
-              final topics = houses[house]!;
-              return DragTarget<Map<String, dynamic>>(
-                onAccept: (data) {
-                  final topic = data['topic'];
-                  final fromHouse = data['fromHouse'];
-                  if (fromHouse != house) {
-                    _moveTopic(topic['id'], house, topics.length);
-                  }
-                },
-                builder: (context, candidateData, rejectedData) => Padding(
+          child: Container( // ✅ WRAP with Container to force width
+            width: MediaQuery.of(context).size.width, // ✅ Full screen width
+            alignment: Alignment.centerRight, // ✅ Align content to right
+            child: Row(
+              mainAxisSize: MainAxisSize.min, // ✅ Row shrinks to its content
+              textDirection: TextDirection.rtl, // ✅ RTL Row
+              children: houseNames.map((house) {
+                final topics = houses[house] ?? [];
+
+                return Padding(
                   padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        onSecondaryTapDown: (details) => _onHouseRightClick(house, details.globalPosition),
-                        child: Row(
-                          children: [
-                            Text(house, style: TextStyle(fontWeight: FontWeight.bold)),
-                            IconButton(icon: Icon(Icons.add), onPressed: () => _addTopic(house)),
-                          ],
-                        ),
+                  child: SizedBox(
+                    width: 200,
+                    child: DragTarget<Map<String, dynamic>>(
+                      onWillAccept: (data) => true,
+                      onAcceptWithDetails: (details) {
+                        final data = details.data;
+                        final topic = data['topic'];
+                        final fromHouse = data['fromHouse'];
+
+                        if (!topics.any((t) => t['id'] == topic['id'])) {
+                          if (mounted) {
+                            setState(() {
+                              topics.add(topic);
+                            });
+                          }
+                          _moveTopic(topic['id'], house, topics.length - 1);
+                        }
+                      },
+                      builder: (context, candidateData, rejectedData) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onSecondaryTapDown: (details) => _onHouseRightClick(house, details.globalPosition),
+                            child: Row(
+                              children: [
+                                Text(house, style: TextStyle(fontWeight: FontWeight.bold)),
+                                IconButton(icon: Icon(Icons.add), onPressed: () => _openTopicDialog(house: house)),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          ...topics.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final topic = entry.value;
+                            return DragTarget<Map<String, dynamic>>(
+                              onWillAccept: (data) => true,
+                              onAcceptWithDetails: (details) {
+                                final dragged = details.data['topic'];
+                                final fromHouse = details.data['fromHouse'];
+
+                                if (mounted) {
+                                  setState(() {
+                                    if (fromHouse != house) {
+                                      houses[fromHouse]?.removeWhere((t) => t['id'] == dragged['id']);
+                                      topics.insert(index, dragged);
+                                    } else {
+                                      final currentIndex = topics.indexWhere((t) => t['id'] == dragged['id']);
+                                      if (currentIndex != -1) {
+                                        final movedTopic = topics.removeAt(currentIndex);
+                                        topics.insert(index > currentIndex ? index - 1 : index, movedTopic);
+                                      }
+                                    }
+                                  });
+                                }
+
+                                // Update order for all topics
+                                for (int i = 0; i < topics.length; i++) {
+                                  _moveTopic(topics[i]['id'], house, i);
+                                }
+                              },
+                              builder: (context, candidateData, rejectedData) {
+                                return _buildTopicTile(topic, house);
+                              },
+                            );
+                          }).toList(),
+                        ],
                       ),
-                      SizedBox(height: 8),
-                      ...topics.map((topic) => _buildTopicTile(topic, house)).toList(),
-                    ],
+                    ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
     );
   }
+
+
 }

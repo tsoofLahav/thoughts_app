@@ -180,9 +180,37 @@ def move_topic():
 
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # 1. Update the moved topic to the new house (temporarily give it a special order)
     cur.execute("""
-        UPDATE topics SET house = %s, "order" = %s WHERE id = %s
-    """, (new_house, new_order, topic_id))
+        UPDATE topics SET house = %s, "order" = -1 WHERE id = %s
+    """, (new_house, topic_id))
+    conn.commit()
+
+    # 2. Fetch all topics in the new house, ordered by "order"
+    cur.execute("""
+        SELECT id FROM topics WHERE house = %s AND id != %s ORDER BY "order"
+    """, (new_house, topic_id))
+    other_topics = cur.fetchall()
+
+    # 3. Insert the moved topic at the right place
+    all_topics_ordered = []
+    inserted = False
+    for index, (other_id,) in enumerate(other_topics):
+        if index == new_order:
+            all_topics_ordered.append(topic_id)  # Insert moved topic here
+            inserted = True
+        all_topics_ordered.append(other_id)
+
+    if not inserted:
+        all_topics_ordered.append(topic_id)  # If new_order > length, add at the end
+
+    # 4. Update the order numbers correctly
+    for new_index, tid in enumerate(all_topics_ordered):
+        cur.execute("""
+            UPDATE topics SET "order" = %s WHERE id = %s
+        """, (new_index, tid))
+
     conn.commit()
     cur.close()
     conn.close()
