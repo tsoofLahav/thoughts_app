@@ -309,8 +309,6 @@ def toggle_file_link():
     return '', 200
 
 
-import json
-
 @app.route('/file_info', methods=['GET'])
 def get_file_info():
     topic_id = request.args.get('topic_id')
@@ -327,13 +325,7 @@ def get_file_info():
     conn.close()
 
     if row:
-        try:
-            parsed_content = json.loads(row[0])  # 🛠 Properly decode
-        except Exception as e:
-            print('Error parsing content JSON:', e)
-            parsed_content = []  # In case it's broken
-
-        return jsonify({'content': parsed_content, 'linked': row[1]})
+        return jsonify({'content': row[0], 'linked': row[1]})
     else:
         return jsonify({'error': 'File not found'}), 404
 
