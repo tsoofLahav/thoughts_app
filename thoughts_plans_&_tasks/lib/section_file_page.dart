@@ -194,9 +194,11 @@ class _SectionFilePageState extends State<SectionFilePage> {
       return ListView.builder(
         itemCount: content.length,
         itemBuilder: (_, i) {
+          final entry = content[i];
+          final text = entry is String ? entry : (entry['text'] ?? '');
           final prefix = useNumbers ? '${i + 1}.' : '•';
           return ListTile(
-            title: Text('$prefix ${content[i]}'),
+            title: Text('$prefix $text'),
             trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => _removeEntry(i)),
           );
         },

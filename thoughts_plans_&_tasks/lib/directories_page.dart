@@ -176,7 +176,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
     await http.post(Uri.parse('$backendUrl/move_topic'),
         body: jsonEncode({'topic_id': topicId, 'new_house': newHouse, 'new_order': newOrder}),
         headers: {'Content-Type': 'application/json'});
-    _loadData();
+    _loadData(); // ✅ Important!
   }
 
   void _onTopicRightClick(Map<String, dynamic> topic, String house, Offset position) {
@@ -326,12 +326,12 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
         ),
         body: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Container( // ✅ WRAP with Container to force width
-            width: MediaQuery.of(context).size.width, // ✅ Full screen width
-            alignment: Alignment.centerRight, // ✅ Align content to right
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            alignment: Alignment.centerRight,
             child: Row(
-              mainAxisSize: MainAxisSize.min, // ✅ Row shrinks to its content
-              textDirection: TextDirection.rtl, // ✅ RTL Row
+              mainAxisSize: MainAxisSize.min,
+              textDirection: TextDirection.rtl,
               children: houseNames.map((house) {
                 final topics = houses[house] ?? [];
 
@@ -346,14 +346,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
                         final topic = data['topic'];
                         final fromHouse = data['fromHouse'];
 
-                        if (!topics.any((t) => t['id'] == topic['id'])) {
-                          if (mounted) {
-                            setState(() {
-                              topics.add(topic);
-                            });
-                          }
-                          _moveTopic(topic['id'], house, topics.length - 1);
-                        }
+                        _moveTopic(topic['id'], house, topics.length); // ✅ No manual setState
                       },
                       builder: (context, candidateData, rejectedData) => Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -377,25 +370,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
                                 final dragged = details.data['topic'];
                                 final fromHouse = details.data['fromHouse'];
 
-                                if (mounted) {
-                                  setState(() {
-                                    if (fromHouse != house) {
-                                      houses[fromHouse]?.removeWhere((t) => t['id'] == dragged['id']);
-                                      topics.insert(index, dragged);
-                                    } else {
-                                      final currentIndex = topics.indexWhere((t) => t['id'] == dragged['id']);
-                                      if (currentIndex != -1) {
-                                        final movedTopic = topics.removeAt(currentIndex);
-                                        topics.insert(index > currentIndex ? index - 1 : index, movedTopic);
-                                      }
-                                    }
-                                  });
-                                }
-
-                                // Update order for all topics
-                                for (int i = 0; i < topics.length; i++) {
-                                  _moveTopic(topics[i]['id'], house, i);
-                                }
+                                _moveTopic(dragged['id'], house, index); // ✅ Correct index
                               },
                               builder: (context, candidateData, rejectedData) {
                                 return _buildTopicTile(topic, house);
