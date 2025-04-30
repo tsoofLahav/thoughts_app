@@ -218,17 +218,30 @@ def move_topic():
     return '', 200
 
 
+@app.route('/toggle_flat', methods=['POST'])
+def toggle_flat():
+    data = request.get_json()
+    topic_id = data['topic_id']
+    flat = data['flat']
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE topics SET flat = %s WHERE id = %s", (flat, topic_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return '', 200
+
 @app.route('/topic_details/<int:topic_id>', methods=['GET'])
 def topic_details(topic_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT name, color FROM topics WHERE id = %s", (topic_id,))
+    cur.execute("SELECT name, color, flat FROM topics WHERE id = %s", (topic_id,))
     row = cur.fetchone()
     cur.close()
     conn.close()
 
     if row:
-        return jsonify({'name': row[0], 'color': row[1]})
+        return jsonify({'name': row[0], 'color': row[1], 'flat': row[2]})
     else:
         return jsonify({'error': 'Topic not found'}), 404
 

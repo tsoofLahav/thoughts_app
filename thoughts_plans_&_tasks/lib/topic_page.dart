@@ -18,6 +18,7 @@ class _TopicPageState extends State<TopicPage> {
   List<String> docsFiles = [];
   Color? backgroundColor;
   String topicName = '';
+  bool isFlatView = false;
   final String backendUrl = 'https://thoughts-app-92lm.onrender.com';
 
   @override
@@ -199,19 +200,95 @@ class _TopicPageState extends State<TopicPage> {
     );
   }
 
+  Widget _buildFlatView() {
+    final allFiles = [
+      ...plansFiles.map((f) => {'name': f, 'section': 'plans'}),
+      ...tasksFiles.map((f) => {'name': f, 'section': 'tasks'}),
+      ...docsFiles.map((f) => {'name': f, 'section': 'docs'}),
+    ];
+
+    return Expanded(
+      child: Container(
+        margin: EdgeInsets.all(16),
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Text('קבצים', style: TextStyle(fontWeight: FontWeight.bold)),
+                Spacer(),
+                IconButton(
+                  icon: Icon(Icons.add),
+                  onPressed: () => _addFile('tasks'),
+                ),
+              ],
+            ),
+            Divider(),
+            Expanded(
+              child: ListView.builder(
+                itemCount: allFiles.length,
+                itemBuilder: (context, index) {
+                  final file = allFiles[index] as Map<String, dynamic>;
+                  final fileName = file['name'] ?? '';
+                  final section = file['section'] ?? 'tasks';
+                  return GestureDetector(
+                    onSecondaryTapDown: (details) async {
+                      final selected = await showMenu(
+                        context: context,
+                        position: RelativeRect.fromLTRB(
+                          details.globalPosition.dx,
+                          details.globalPosition.dy,
+                          0,
+                          0,
+                        ),
+                        items: [
+                          PopupMenuItem(value: 'delete', child: Text('מחק')),
+                        ],
+                      );
+                      if (selected == 'delete') _deleteFile(section, fileName);
+                    },
+                    child: ListTile(
+                      title: Text(fileName),
+                      onTap: () => _openFile(section, fileName),
+                    ),
+                  );
+                },
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: backgroundColor ?? Colors.white,
-        appBar: AppBar(title: Text(topicName)),
-        body: Column(
-          children: [
-            _buildSection("תוכניות", plansFiles, 'plans'),
-            _buildSection("משימות", tasksFiles, 'tasks'),
-            _buildSection("תיעוד", docsFiles, 'docs'),
+        appBar: AppBar(
+          title: Text(topicName),
+          actions: [
+            IconButton(
+              icon: Icon(isFlatView ? Icons.view_column : Icons.view_agenda),
+              tooltip: isFlatView ? 'הצג לפי קטגוריות' : 'הצג כרשימה אחת',
+              onPressed: () => setState(() => isFlatView = !isFlatView),
+            )
           ],
+        ),
+        body: Column(
+          children: isFlatView
+              ? [_buildFlatView()]
+              : [
+                  _buildSection("תוכניות", plansFiles, 'plans'),
+                  _buildSection("משימות", tasksFiles, 'tasks'),
+                  _buildSection("תיעוד", docsFiles, 'docs'),
+                ],
         ),
       ),
     );

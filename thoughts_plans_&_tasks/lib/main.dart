@@ -183,7 +183,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
     // 4. Add New Points
     List<String> points = selectedText.split('\n').where((s) => s.trim().isNotEmpty).toList();
-    content.addAll(points);
+    content.addAll(points.map((p) => {'text': p}));
 
     // 5. Update File Content (POST to /file_content)
     await http.post(

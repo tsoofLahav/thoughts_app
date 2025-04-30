@@ -91,7 +91,7 @@ class _SectionFilePageState extends State<SectionFilePage> {
     } else if (widget.section == 'tasks') {
       content.add({'text': value, 'done': false});
     } else {
-      content.add(value);
+      content.add({'text': value}); // ✅ instead of just adding 'value'
     }
     _textController.clear();
     setState(() {});
