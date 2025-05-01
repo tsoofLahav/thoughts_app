@@ -31,7 +31,10 @@ def set_window_args():
 
 @app.route('/window_args', methods=['GET'])
 def get_window_args():
-    return jsonify(current_window_args)
+    global current_window_args
+    meow = current_window_args
+    current_window_args = {}
+    return jsonify(meow)
 
 @app.route('/clear_window_args', methods=['POST'])
 def clear_window_args():

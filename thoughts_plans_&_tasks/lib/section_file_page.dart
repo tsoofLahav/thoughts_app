@@ -216,7 +216,16 @@ class _SectionFilePageState extends State<SectionFilePage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${widget.fileName} - $topicName'),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${widget.fileName} - $topicName',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           backgroundColor: appBarColor ?? Theme.of(context).primaryColor,
           actions: [
             IconButton(
@@ -240,4 +249,5 @@ class _SectionFilePageState extends State<SectionFilePage> {
       ),
     );
   }
+
 }
