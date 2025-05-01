@@ -324,11 +324,10 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
             IconButton(icon: Icon(Icons.add_box), onPressed: () => _openHouseDialog()),
           ],
         ),
-        body: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            alignment: Alignment.centerRight,
+        body: Container(
+          alignment: Alignment.centerRight,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               textDirection: TextDirection.rtl,
@@ -345,8 +344,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
                         final data = details.data;
                         final topic = data['topic'];
                         final fromHouse = data['fromHouse'];
-
-                        _moveTopic(topic['id'], house, topics.length); // ✅ No manual setState
+                        _moveTopic(topic['id'], house, topics.length);
                       },
                       builder: (context, candidateData, rejectedData) => Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,8 +367,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
                               onAcceptWithDetails: (details) {
                                 final dragged = details.data['topic'];
                                 final fromHouse = details.data['fromHouse'];
-
-                                _moveTopic(dragged['id'], house, index); // ✅ Correct index
+                                _moveTopic(dragged['id'], house, index);
                               },
                               builder: (context, candidateData, rejectedData) {
                                 return _buildTopicTile(topic, house);
@@ -389,6 +386,7 @@ class _DirectoriesPageState extends State<DirectoriesPage> {
       ),
     );
   }
+
 
 
 }

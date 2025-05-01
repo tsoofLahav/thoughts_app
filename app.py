@@ -19,6 +19,26 @@ def get_db_connection():
 def ping():
     return 'pong', 200
 
+# ---------- PAGES ----------
+
+current_window_args = {}
+
+@app.route('/window_args', methods=['POST'])
+def set_window_args():
+    global current_window_args
+    current_window_args = request.json
+    return jsonify({'status': 'ok'})
+
+@app.route('/window_args', methods=['GET'])
+def get_window_args():
+    return jsonify(current_window_args)
+
+@app.route('/clear_window_args', methods=['POST'])
+def clear_window_args():
+    global current_window_args
+    current_window_args = {}
+    return jsonify({'status': 'cleared'})
+
 # ---------- HOUSES ----------
 @app.route('/add_house', methods=['POST'])
 def add_house():
