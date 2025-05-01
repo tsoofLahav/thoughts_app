@@ -215,29 +215,30 @@ class _SectionFilePageState extends State<SectionFilePage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${widget.fileName} - $topicName',
-                  overflow: TextOverflow.ellipsis,
+        appBar: PreferredSize(
+          preferredSize: Size.fromHeight(kToolbarHeight),
+          child: AppBar(
+            backgroundColor: appBarColor ?? Theme.of(context).primaryColor,
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${widget.fileName} - $topicName',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          backgroundColor: appBarColor ?? Theme.of(context).primaryColor,
-          actions: [
-            IconButton(
-              icon: Icon(isLinked ? Icons.link_off : Icons.link),
-              tooltip: isLinked ? 'הסר משורת קיצורים' : 'הצמד לשורת קיצורים',
-              onPressed: _toggleLink,
+                IconButton(
+                  icon: Icon(isLinked ? Icons.link_off : Icons.link),
+                  tooltip: isLinked ? 'הסר משורת קיצורים' : 'הצמד לשורת קיצורים',
+                  onPressed: _toggleLink,
+                ),
+                IconButton(
+                  icon: Icon(Icons.refresh),
+                  onPressed: _loadMetadata,
+                ),
+              ],
             ),
-            IconButton(
-              icon: Icon(Icons.refresh),
-              onPressed: _loadMetadata,
-            )
-          ],
+          ),
         ),
         body: Column(
           children: [
@@ -249,5 +250,6 @@ class _SectionFilePageState extends State<SectionFilePage> {
       ),
     );
   }
+
 
 }

@@ -22,25 +22,41 @@ def ping():
 # ---------- PAGES ----------
 
 current_window_args = {}
+should_open_window = False
 
+# Set the window arguments
 @app.route('/window_args', methods=['POST'])
 def set_window_args():
     global current_window_args
     current_window_args = request.json
     return jsonify({'status': 'ok'})
 
+# Get the window arguments (and clear them after use)
 @app.route('/window_args', methods=['GET'])
 def get_window_args():
     global current_window_args
-    meow = current_window_args
-    current_window_args = {}
-    return jsonify(meow)
+    args = current_window_args
+    current_window_args = {}  # Clear after fetch
+    return jsonify(args)
 
-@app.route('/clear_window_args', methods=['POST'])
-def clear_window_args():
-    global current_window_args
-    current_window_args = {}
-    return jsonify({'status': 'cleared'})
+# Trigger a window open (from child window)
+@app.route('/window_request', methods=['POST'])
+def trigger_window_open():
+    global should_open_window
+    should_open_window = True
+    return jsonify({'status': 'triggered'})
+
+# Polling route (main window checks this)
+@app.route('/window_request', methods=['GET'])
+def check_window_request():
+    return jsonify({'open': should_open_window})
+
+# Reset the flag after opening
+@app.route('/reset_window_request', methods=['POST'])
+def reset_window_request():
+    global should_open_window
+    should_open_window = False
+    return jsonify({'status': 'reset'})
 
 # ---------- HOUSES ----------
 @app.route('/add_house', methods=['POST'])

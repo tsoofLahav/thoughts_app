@@ -237,17 +237,15 @@ class _TopicPageState extends State<TopicPage> {
                           'fileName': files[index],
                         };
 
-                        final res = await http.post(
+                        // Save args to backend
+                        await http.post(
                           Uri.parse('https://thoughts-app-92lm.onrender.com/window_args'),
                           headers: {'Content-Type': 'application/json'},
                           body: jsonEncode(data),
                         );
 
-                        if (res.statusCode == 200) {
-                          final window = await DesktopMultiWindow.createWindow(''); // pass empty string
-                          await window.setTitle(files[index]);
-                          window.show();
-                        }
+                        // Trigger main page to open a window
+                        await http.post(Uri.parse('https://thoughts-app-92lm.onrender.com/window_request'));
                       }
                     },
                     child: ListTile(

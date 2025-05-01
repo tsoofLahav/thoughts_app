@@ -3,27 +3,28 @@ import 'home_page.dart';
 import 'section_file_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/window_args'));
-  final args = jsonDecode(res.body);
-  Widget app;
+  if (args.isNotEmpty) {
+    // This is a newly created window
+    final windowId = int.parse(args[0]);
+    final controller = WindowController.fromWindowId(windowId);
 
-  if (args.isEmpty || args['page'] == null) {
-    app = ThoughtOrganizerApp();
-  } else if (args['page'] == 'file') {
-    app = MaterialApp(
+    final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/window_args'));
+    final data = jsonDecode(res.body);
+
+    runApp(MaterialApp(
       home: SectionFilePage(
-        topicId: args['topicId'],
-        section: args['section'],
-        fileName: args['fileName'],
+        topicId: data['topicId'],
+        section: data['section'],
+        fileName: data['fileName'],
       ),
-    );
+    ));
   } else {
-    app = ThoughtOrganizerApp();
+    // This is the main window
+    runApp(ThoughtOrganizerApp());
   }
-
-  runApp(app);
 }
