@@ -462,7 +462,7 @@ def reorder_unclassified():
     conn = get_db_connection()
     cur = conn.cursor()
     data = request.json
-    tasks = data['tasks']  # list of {content, order}
+    tasks = data['tasks']
 
     for task in tasks:
         cur.execute("""
@@ -501,6 +501,28 @@ def add_unclassified():
     cur.execute("INSERT INTO unclassified_tasks (\"order\", content) VALUES (%s, %s)", (order, content))
     conn.commit()
     return jsonify({'status': 'unclassified task added'})
+
+@app.route('/delete_unclassified', methods=['POST'])
+def delete_unclassified():
+    data = request.json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM unclassified_tasks WHERE content = %s", (data['content'],))
+    conn.commit()
+    return jsonify({'status': 'deleted'})
+
+@app.route('/delete_task_and_file', methods=['POST'])
+def delete_task_and_file():
+    data = request.json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM tasks WHERE topic_id = %s AND file_name = %s",
+                (data['topic_id'], data['file_name']))
+    cur.execute("DELETE FROM files WHERE topic_id = %s AND name = %s",
+                (data['topic_id'], data['file_name']))
+    conn.commit()
+    return jsonify({'status': 'deleted'})
+
 
 
 # ---------------- GREEN NOTE SYSTEM ----------------

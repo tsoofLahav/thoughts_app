@@ -93,15 +93,16 @@ class _TaskPageState extends State<TaskPage> {
   Future<void> _moveTask(Map<String, dynamic> task, String toSection, int newOrder) async {
     final fromSection = task['section'];
 
-    // Prevent moving between "לא ממוין" and other sections
-    if ((fromSection == 'לא ממוין' && toSection != 'לא ממוין') ||
-        (fromSection != 'לא ממוין' && toSection == 'לא ממוין')) {
-      return; // Disallow
+    if (fromSection != toSection &&
+        (fromSection == 'לא ממוין' || toSection == 'לא ממוין')) {
+      return; // Disallow cross-section moves involving "לא ממוין"
     }
 
     setState(() {
       sectionTasks[fromSection]?.remove(task);
-      sectionTasks[toSection]?.insert(newOrder, task);
+      final targetList = sectionTasks[toSection]!;
+      final clampedIndex = newOrder.clamp(0, targetList.length);
+      targetList.insert(clampedIndex, task);
       task['section'] = toSection;
     });
 
@@ -140,22 +141,58 @@ class _TaskPageState extends State<TaskPage> {
     }
   }
 
+  void _showTaskContextMenu(Offset position, Map task) async {
+    final selected = await showMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      items: [
+        PopupMenuItem(value: 'delete', child: Text('מחק')),
+        PopupMenuItem(value: 'new_window', child: Text('פתח בחלון חדש')),
+      ],
+    );
+
+    if (selected == 'delete') {
+      final section = task['section'];
+      if (section == 'לא ממוין') {
+        await http.post(
+          Uri.parse('$backendUrl/delete_unclassified'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'content': task['content']}),
+        );
+      } else {
+        await http.post(
+          Uri.parse('$backendUrl/delete_task_and_file'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'topic_id': task['topic_id'],
+            'file_name': task['file_name'],
+          }),
+        );
+      }
+      _loadTasks();
+    }
+  }
+
 
   Widget _buildTaskTile(Map<String, dynamic> task) {
     final color = topicColors[task['topic_id']] ?? Colors.teal;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        tileColor: color,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          task['content'] ?? task['file_name'],
-          style: TextStyle(color: Colors.white, fontSize: 13),
-          overflow: TextOverflow.ellipsis,
+      child: GestureDetector(
+        onSecondaryTapDown: (details) => _showTaskContextMenu(details.globalPosition, task),
+        child: ListTile(
+          tileColor: color,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            task['content'] ?? task['file_name'],
+            style: TextStyle(color: Colors.white, fontSize: 13),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
