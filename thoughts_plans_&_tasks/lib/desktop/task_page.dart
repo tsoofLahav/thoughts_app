@@ -59,31 +59,87 @@ class _TaskPageState extends State<TaskPage> {
     }
   }
 
+  Future<void> _addUnclassifiedTask() async {
+    final controller = TextEditingController();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('הוסף משימה'),
+        content: TextField(
+          controller: controller,
+          textDirection: TextDirection.rtl,
+          autofocus: true,
+          decoration: InputDecoration(hintText: 'כתוב את המשימה'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('ביטול')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text('הוסף')),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await http.post(
+        Uri.parse('$backendUrl/add_unclassified'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'content': result}),
+      );
+      _loadTasks();
+    }
+  }
+
+
   Future<void> _moveTask(Map<String, dynamic> task, String toSection, int newOrder) async {
+    final fromSection = task['section'];
+
+    // Prevent moving between "לא ממוין" and other sections
+    if ((fromSection == 'לא ממוין' && toSection != 'לא ממוין') ||
+        (fromSection != 'לא ממוין' && toSection == 'לא ממוין')) {
+      return; // Disallow
+    }
+
     setState(() {
-      for (var list in sectionTasks.values) list.remove(task);
-      sectionTasks[toSection]!.insert(newOrder, task);
+      sectionTasks[fromSection]?.remove(task);
+      sectionTasks[toSection]?.insert(newOrder, task);
       task['section'] = toSection;
     });
 
     if (toSection == 'לא ממוין') {
-      await http.post(Uri.parse('$backendUrl/update_unclassified_order'),
+      final reordered = sectionTasks['לא ממוין']!
+          .asMap()
+          .entries
+          .map((entry) => {
+            'content': entry.value['content'],
+            'order': entry.key,
+          })
+          .toList();
+
+      await http.post(
+        Uri.parse('$backendUrl/reorder_unclassified'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'content': task['content'],
-          'order': newOrder,
-        }));
+        body: jsonEncode({'tasks': reordered}),
+      );
     } else {
-      await http.post(Uri.parse('$backendUrl/update_task'),
+      final reordered = sectionTasks[toSection]!
+          .asMap()
+          .entries
+          .map((entry) => {
+            'topic_id': entry.value['topic_id'],
+            'file_name': entry.value['file_name'],
+            'order': entry.key,
+            'section': toSection,
+          })
+          .toList();
+
+      await http.post(
+        Uri.parse('$backendUrl/reorder_task'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'topic_id': task['topic_id'],
-          'file_name': task['file_name'],
-          'section': toSection,
-          'order': newOrder,
-        }));
+        body: jsonEncode({'tasks': reordered}),
+      );
     }
   }
+
 
   Widget _buildTaskTile(Map<String, dynamic> task) {
     final color = topicColors[task['topic_id']] ?? Colors.teal;
@@ -128,7 +184,21 @@ class _TaskPageState extends State<TaskPage> {
                     builder: (context, _, __) => Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(section, style: TextStyle(fontWeight: FontWeight.bold)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(section, style: TextStyle(fontWeight: FontWeight.bold)),
+                            if (section == 'לא ממוין')
+                              IconButton(
+                                icon: Icon(Icons.add),
+                                iconSize: 20,
+                                padding: EdgeInsets.zero,
+                                constraints: BoxConstraints(),
+                                onPressed: _addUnclassifiedTask,
+                                tooltip: 'הוסף משימה',
+                              ),
+                          ],
+                        ),
                         SizedBox(height: 8),
                         ...tasks.asMap().entries.map((entry) {
                           final index = entry.key;

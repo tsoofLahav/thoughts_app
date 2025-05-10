@@ -424,23 +424,6 @@ def get_linked_files():
 
 # ---------- TASKS ----------
 
-def reorder_list(table, section=None):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    if table == 'tasks':
-        query = "SELECT topic_id, file_name FROM tasks WHERE section = %s ORDER BY \"order\""
-        cur.execute(query, (section,))
-        rows = cur.fetchall()
-        for i, (topic_id, file_name) in enumerate(rows):
-            cur.execute("UPDATE tasks SET \"order\" = %s WHERE topic_id = %s AND file_name = %s",
-                           (i, topic_id, file_name))
-    elif table == 'unclassified_tasks':
-        cur.execute("SELECT content FROM unclassified_tasks ORDER BY \"order\"")
-        rows = cur.fetchall()
-        for i, (content,) in enumerate(rows):
-            cur.execute("UPDATE unclassified_tasks SET \"order\" = %s WHERE content = %s", (i, content))
-    conn.commit()
-
 @app.route('/unclassified_tasks')
 def get_unclassified():
     conn = get_db_connection()
@@ -457,20 +440,20 @@ def get_tasks():
     rows = cur.fetchall()
     return jsonify([{'topic_id': r[0], 'file_name': r[1], 'section': r[2], 'order': r[3]} for r in rows])
 
-# --- POST endpoints ---
 @app.route('/reorder_task', methods=['POST'])
 def reorder_task():
     conn = get_db_connection()
     cur = conn.cursor()
     data = request.json
-    topic_id = data['topic_id']
-    file_name = data['file_name']
-    new_section = data['new_section']
-    new_order = data['new_order']
+    tasks = data['tasks']  # list of {topic_id, file_name, order, section}
 
-    cur.execute("UPDATE tasks SET section = %s, \"order\" = %s WHERE topic_id = %s AND file_name = %s",
-                   (new_section, new_order, topic_id, file_name))
-    reorder_list('tasks', new_section)
+    for task in tasks:
+        cur.execute("""
+            UPDATE tasks
+            SET section = %s, \"order\" = %s
+            WHERE topic_id = %s AND file_name = %s
+        """, (task['section'], task['order'], task['topic_id'], task['file_name']))
+
     conn.commit()
     return jsonify({'status': 'success'})
 
@@ -479,11 +462,15 @@ def reorder_unclassified():
     conn = get_db_connection()
     cur = conn.cursor()
     data = request.json
-    content = data['content']
-    new_order = data['new_order']
+    tasks = data['tasks']  # list of {content, order}
 
-    cur.execute("UPDATE unclassified_tasks SET \"order\" = %s WHERE content = %s", (new_order, content))
-    reorder_list('unclassified_tasks')
+    for task in tasks:
+        cur.execute("""
+            UPDATE unclassified_tasks
+            SET \"order\" = %s
+            WHERE content = %s
+        """, (task['order'], task['content']))
+
     conn.commit()
     return jsonify({'status': 'success'})
 
