@@ -93,9 +93,10 @@ class _TaskPageState extends State<TaskPage> {
   Future<void> _moveTask(Map<String, dynamic> task, String toSection, int newOrder) async {
     final fromSection = task['section'];
 
-    if (fromSection != toSection &&
-        (fromSection == 'לא ממוין' || toSection == 'לא ממוין')) {
-      return; // Disallow cross-section moves involving "לא ממוין"
+    if (fromSection != toSection){
+      if (fromSection == 'לא ממוין' || toSection == 'לא ממוין') {
+        return;
+      }
     }
 
     setState(() {
@@ -209,7 +210,7 @@ class _TaskPageState extends State<TaskPage> {
             children: sections.reversed.map((section) {
               final tasks = sectionTasks[section] ?? [];
               return Padding(
-                padding: const EdgeInsets.all(12.0),
+                padding: const EdgeInsets.all(6.0),
                 child: SizedBox(
                   width: 200,
                   child: DragTarget<Map<String, dynamic>>(
@@ -229,7 +230,7 @@ class _TaskPageState extends State<TaskPage> {
                               IconButton(
                                 icon: Icon(Icons.add),
                                 iconSize: 20,
-                                padding: EdgeInsets.zero,
+                                padding: EdgeInsets.all(2.0),
                                 constraints: BoxConstraints(),
                                 onPressed: _addUnclassifiedTask,
                                 tooltip: 'הוסף משימה',

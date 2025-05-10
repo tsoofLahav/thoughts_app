@@ -507,9 +507,18 @@ def delete_unclassified():
     data = request.json
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM unclassified_tasks WHERE content = %s", (data['content'],))
+
+    cur.execute("""
+        DELETE FROM unclassified_tasks
+        WHERE content = %s AND "order" = %s
+    """, (data['content'], data['order']))
+
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Task not found'}), 404
+
     conn.commit()
     return jsonify({'status': 'deleted'})
+
 
 @app.route('/delete_task_and_file', methods=['POST'])
 def delete_task_and_file():
