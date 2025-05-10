@@ -230,22 +230,16 @@ class _TopicPageState extends State<TopicPage> {
                       if (selected == 'edit') _showFileNameDialog(section: section, oldName: files[index]);
                       if (selected == 'delete') _deleteFile(section, files[index]);
                       if (selected == 'new_window') {
-                        final data = {
+                        final window = await DesktopMultiWindow.createWindow(jsonEncode({
                           'page': 'file',
                           'topicId': widget.topicId,
                           'section': section,
                           'fileName': files[index],
-                        };
-
-                        // Save args to backend
-                        await http.post(
-                          Uri.parse('https://thoughts-app-92lm.onrender.com/window_args'),
-                          headers: {'Content-Type': 'application/json'},
-                          body: jsonEncode(data),
-                        );
-
-                        // Trigger main page to open a window
-                        await http.post(Uri.parse('https://thoughts-app-92lm.onrender.com/window_request'));
+                        }));
+                        window
+                          ..setFrame(const Offset(200, 200) & const Size(800, 600))
+                          ..setTitle(files[index])
+                          ..show();
                       }
                     },
                     child: ListTile(

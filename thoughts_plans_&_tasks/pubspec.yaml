@@ -31,7 +31,7 @@ dependencies:
   shared_preferences: ^2.2.2
   connectivity_plus: ^5.0.2
   flutter_colorpicker: ^1.0.3
-  desktop_multi_window: ^0.2.0
+  desktop_multi_window: ^0.2.1
   http: ^0.13.6
   flutter:
     sdk: flutter

@@ -1,30 +1,66 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart';
-import 'section_file_page.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
+
+import 'desktop/section_file_page.dart';
+import 'desktop/home_page.dart';
+import 'desktop/green_note_page.dart';
+import 'desktop/directories_page.dart';
+import 'desktop/task_page.dart';
+import 'desktop/daily_tasks_page.dart';
+import 'desktop/history_graph_page.dart';
+import 'desktop/control_page.dart';
+import 'desktop/green_note_history_page.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  print('App started with args: $args');
 
-  if (args.isNotEmpty) {
-    // This is a newly created window
-    final windowId = int.parse(args[0]);
-    final controller = WindowController.fromWindowId(windowId);
+  if (args.length > 2) {
+    final windowArgs = jsonDecode(args[2]);
 
-    final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/window_args'));
-    final data = jsonDecode(res.body);
+    switch (windowArgs['page']) {
+      case 'file':
+        runApp(MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData.light(),
+          home: SectionFilePage(
+            topicId: windowArgs['topicId'],
+            section: windowArgs['section'],
+            fileName: windowArgs['fileName'],
+          ),
+        ));
+        return;
 
-    runApp(MaterialApp(
-      home: SectionFilePage(
-        topicId: data['topicId'],
-        section: data['section'],
-        fileName: data['fileName'],
-      ),
-    ));
-  } else {
-    // This is the main window
-    runApp(ThoughtOrganizerApp());
+      case 'green_note':
+        runApp(MaterialApp(home: GreenNotePage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'directories':
+        runApp(MaterialApp(home: DirectoriesPage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'tasks':
+        runApp(MaterialApp(home: TaskPage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'daily_tasks':
+        runApp(MaterialApp(home: DailyTasksPage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'data':
+        runApp(MaterialApp(home: HistoryPage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'green_note_history':
+        runApp(MaterialApp(home: GreenNoteHistoryPage(), debugShowCheckedModeBanner: false));
+        return;
+
+      case 'control':
+        runApp(MaterialApp(home: ControlPage(), debugShowCheckedModeBanner: false));
+        return;
+    }
   }
+
+  // Main window
+  runApp(ThoughtOrganizerApp());
 }

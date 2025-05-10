@@ -10,6 +10,7 @@ import 'daily_tasks_page.dart';
 import 'history_graph_page.dart';
 import 'control_page.dart';
 import 'green_note_history_page.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 
 class ThoughtOrganizerApp extends StatelessWidget {
@@ -65,6 +66,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     }
   }
 
+  /////////////////////////////////////////////////////////////
+  /////////////////// LOAD + TOGGLE PINNED FILES //////////////
+  /////////////////////////////////////////////////////////////
+
   Future<void> _loadPinnedFiles() async {
     try {
       final res = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/linked_files'));
@@ -108,7 +113,11 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       print('Failed to toggle link: $e');
     }
   }
-////////////////////////////save to file///////////////
+
+  /////////////////////////////////////////////////////////////
+  ////////////////////////// SAVE TO FILE /////////////////////
+  /////////////////////////////////////////////////////////////
+
   void _saveToFile() async {
     String selectedText = '';
     final selection = _mainNoteController.selection;
@@ -121,12 +130,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
     if (selectedText.isEmpty) return;
 
-    // 1. Fetch Topics (from /directories)
     final topicsRes = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/directories'));
     if (topicsRes.statusCode != 200) return;
     final Map<String, dynamic> houses = jsonDecode(topicsRes.body);
 
-    // Flatten topics
     final List<Map<String, dynamic>> topics = [];
     houses.forEach((house, topicsList) {
       for (var t in topicsList) {
@@ -146,12 +153,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     );
     if (topic == null) return;
 
-    // 2. Fetch Files for Selected Topic (from /files/<topic_id>)
     final filesRes = await http.get(Uri.parse('https://thoughts-app-92lm.onrender.com/files/${topic['id']}'));
     if (filesRes.statusCode != 200) return;
     final Map<String, dynamic> groupedFiles = jsonDecode(filesRes.body);
 
-    // Flatten files
     final List<Map<String, dynamic>> files = [];
     groupedFiles.forEach((section, fileNames) {
       for (var name in fileNames) {
@@ -171,18 +176,15 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     );
     if (file == null) return;
 
-    // 3. Fetch File Content (from /file_info?topic_id=X&file_name=Y)
     final contentRes = await http.get(Uri.parse(
       'https://thoughts-app-92lm.onrender.com/file_info?topic_id=${topic['id']}&file_name=${Uri.encodeComponent(file['name'])}',
     ));
     if (contentRes.statusCode != 200) return;
     List<dynamic> content = jsonDecode(contentRes.body)['content'];
 
-    // 4. Add New Points
     List<String> points = selectedText.split('\n').where((s) => s.trim().isNotEmpty).toList();
     content.addAll(points.map((p) => {'text': p}));
 
-    // 5. Update File Content (POST to /file_content)
     await http.post(
       Uri.parse('https://thoughts-app-92lm.onrender.com/file_content'),
       headers: {'Content-Type': 'application/json'},
@@ -193,7 +195,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       }),
     );
   }
-////////////////////////////save to file///////////////  
+
+  /////////////////////////////////////////////////////////////
+  ////////////////////////// UI HELPERS ///////////////////////
+  /////////////////////////////////////////////////////////////
 
   void _scrollRight() {
     _scrollController.animateTo(
@@ -211,6 +216,83 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     );
   }
 
+  /////////////////////////////////////////////////////////////
+  /////////////////////// CONTEXT MENU ////////////////////////
+  /////////////////////////////////////////////////////////////
+
+  void _showContextMenu(Offset position, Map file) async {
+    final selected = await showMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      items: [
+        PopupMenuItem(
+          value: 'unlink',
+          child: Text('Unlink'),
+        ),
+        PopupMenuItem(
+          value: 'new_window',
+          child: Text('Open in new window'),
+        ),
+      ],
+    );
+
+    if (selected == 'unlink') {
+      _toggleLink(file['file'], file['topic_id']);
+    } else if (selected == 'new_window') {
+      final window = await DesktopMultiWindow.createWindow(jsonEncode({
+        'page': 'file',
+        'topicId': file['topic_id'],
+        'section': file['section'],
+        'fileName': file['file'],
+      }));
+      window
+        ..setFrame(const Offset(200, 200) & const Size(800, 600))
+        ..setTitle(file['file'])
+        ..show();
+    }
+  }
+  /////////////////////////////////////////////////////////////
+  ////////////////////////// OPEN ICONPATH ////////////////////
+  /////////////////////////////////////////////////////////////
+  void _openPage(String iconPath, {required bool newWindow}) async {
+    String? page;
+
+    if (iconPath == 'assets/green_note.png') page = 'green_note';
+    if (iconPath == 'assets/directories.png') page = 'directories';
+    if (iconPath == 'assets/tasks.png') page = 'tasks';
+    if (iconPath == 'assets/daily_tasks.png') page = 'daily_tasks';
+    if (iconPath == 'assets/data.png') page = 'data';
+    if (iconPath == 'assets/history.png') page = 'green_note_history';
+    if (iconPath == 'assets/control.png') page = 'control';
+
+    if (page == null) return;
+
+    if (newWindow) {
+      final window = await DesktopMultiWindow.createWindow(jsonEncode({'page': page}));
+      window
+        ..setFrame(const Offset(200, 200) & const Size(800, 600))
+        ..setTitle(page)
+        ..show();
+    } else {
+      Widget destination;
+      switch (page) {
+        case 'green_note': destination = GreenNotePage(); break;
+        case 'directories': destination = DirectoriesPage(); break;
+        case 'tasks': destination = TaskPage(); break;
+        case 'daily_tasks': destination = DailyTasksPage(); break;
+        case 'data': destination = HistoryPage(); break;
+        case 'green_note_history': destination = GreenNoteHistoryPage(); break;
+        case 'control': destination = ControlPage(); break;
+        default: return;
+      }
+
+      Navigator.push(context, MaterialPageRoute(builder: (_) => destination));
+    }
+  }
+  /////////////////////////////////////////////////////////////
+  ////////////////////////// BUILD UI /////////////////////////
+  /////////////////////////////////////////////////////////////
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -220,40 +302,35 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         body: SafeArea(
           child: Column(
             children: [
+              // Top Icons Bar with Refresh and New Window Support
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: topIcons.map((iconPath) {
-                    return GestureDetector(
-                      onTap: () {
-                        if (iconPath == 'assets/green_note.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => GreenNotePage()));
-                        }
-                        if (iconPath == 'assets/directories.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => DirectoriesPage()));
-                        }
-                        if (iconPath == 'assets/tasks.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => TaskPage()));
-                        }
-                        if (iconPath == 'assets/daily_tasks.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => DailyTasksPage()));
-                        }
-                        if (iconPath == 'assets/data.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => HistoryPage()));
-                        }
-                        if (iconPath == 'assets/history.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => GreenNoteHistoryPage()));
-                        }
-                        if (iconPath == 'assets/control.png') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ControlPage()));
-                        }
-                      },
-                      child: Image.asset(iconPath, height: 32),
-                    );
-                  }).toList(),
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Icons row
+                    Row(
+                      children: topIcons.map((iconPath) {
+                        return GestureDetector(
+                          onTap: () => _openPage(iconPath, newWindow: false),
+                          onSecondaryTap: () => _openPage(iconPath, newWindow: true),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                            child: Image.asset(iconPath, height: 32),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    // Refresh button
+                    IconButton(
+                      icon: Icon(Icons.refresh),
+                      tooltip: 'רענון נתונים',
+                      onPressed: _loadPinnedFiles,
+                    ),
+                  ],
                 ),
               ),
+              // Main Note Area + Save Button
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
@@ -295,6 +372,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
+
+              // Pinned Files Bar
               Container(
                 height: 110,
                 child: Row(
@@ -321,7 +400,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                               );
                               _loadPinnedFiles();
                             },
-                            onSecondaryTap: () => _toggleLink(file['file'], file['topic_id']),
+                            onSecondaryTapDown: (details) {
+                              _showContextMenu(details.globalPosition, file);
+                            },
                             child: Container(
                               width: 160,
                               margin: const EdgeInsets.symmetric(horizontal: 8),

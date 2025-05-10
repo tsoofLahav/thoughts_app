@@ -324,9 +324,23 @@ def add_file():
         VALUES (%s, %s, %s, FALSE, '[]')
     """, (data['topic_id'], data['section'], data['name']))
     conn.commit()
+
+    # If this is a task section, also add to the tasks table
+    if data['section'] == 'tasks':
+        task_cur = conn.cursor()
+        task_cur.execute("SELECT COUNT(*) FROM tasks WHERE section = 'בהמשך'")
+        order = task_cur.fetchone()[0]
+        task_cur.execute("""
+            INSERT INTO tasks (topic_id, file_name, section, "order")
+            VALUES (%s, %s, 'בהמשך', %s)
+        """, (data['topic_id'], data['name'], order))
+        conn.commit()
+        task_cur.close()
+
     cur.close()
     conn.close()
     return '', 200
+
 
 
 # ----------FILES CONTENT ----------
@@ -407,6 +421,99 @@ def get_linked_files():
         for row in rows
     ]
     return jsonify(result)
+
+# ---------- TASKS ----------
+
+def reorder_list(table, section=None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if table == 'tasks':
+        query = "SELECT topic_id, file_name FROM tasks WHERE section = %s ORDER BY \"order\""
+        cur.execute(query, (section,))
+        rows = cur.fetchall()
+        for i, (topic_id, file_name) in enumerate(rows):
+            cur.execute("UPDATE tasks SET \"order\" = %s WHERE topic_id = %s AND file_name = %s",
+                           (i, topic_id, file_name))
+    elif table == 'unclassified_tasks':
+        cur.execute("SELECT content FROM unclassified_tasks ORDER BY \"order\"")
+        rows = cur.fetchall()
+        for i, (content,) in enumerate(rows):
+            cur.execute("UPDATE unclassified_tasks SET \"order\" = %s WHERE content = %s", (i, content))
+    conn.commit()
+
+@app.route('/unclassified_tasks')
+def get_unclassified():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT \"order\", content FROM unclassified_tasks ORDER BY \"order\"")
+    rows = cur.fetchall()
+    return jsonify([{'order': r[0], 'content': r[1], 'topic_id': 1} for r in rows])  # Use dummy topic_id=1 for coloring
+
+@app.route('/tasks')
+def get_tasks():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT topic_id, file_name, section, \"order\" FROM tasks")
+    rows = cur.fetchall()
+    return jsonify([{'topic_id': r[0], 'file_name': r[1], 'section': r[2], 'order': r[3]} for r in rows])
+
+# --- POST endpoints ---
+@app.route('/reorder_task', methods=['POST'])
+def reorder_task():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    data = request.json
+    topic_id = data['topic_id']
+    file_name = data['file_name']
+    new_section = data['new_section']
+    new_order = data['new_order']
+
+    cur.execute("UPDATE tasks SET section = %s, \"order\" = %s WHERE topic_id = %s AND file_name = %s",
+                   (new_section, new_order, topic_id, file_name))
+    reorder_list('tasks', new_section)
+    conn.commit()
+    return jsonify({'status': 'success'})
+
+@app.route('/reorder_unclassified', methods=['POST'])
+def reorder_unclassified():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    data = request.json
+    content = data['content']
+    new_order = data['new_order']
+
+    cur.execute("UPDATE unclassified_tasks SET \"order\" = %s WHERE content = %s", (new_order, content))
+    reorder_list('unclassified_tasks')
+    conn.commit()
+    return jsonify({'status': 'success'})
+
+@app.route('/add_task', methods=['POST'])
+def add_task():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    data = request.json
+    topic_id = data['topic_id']
+    file_name = data['file_name']
+
+    cur.execute("SELECT COUNT(*) FROM tasks WHERE section = 'בהמשך'")
+    order = cur.fetchone()[0]
+    cur.execute("INSERT INTO tasks (topic_id, file_name, section, \"order\") VALUES (%s, %s, %s, %s)",
+                   (topic_id, file_name, 'בהמשך', order))
+    conn.commit()
+    return jsonify({'status': 'task added'})
+
+@app.route('/add_unclassified', methods=['POST'])
+def add_unclassified():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    data = request.json
+    content = data['content']
+
+    cur.execute("SELECT COUNT(*) FROM unclassified_tasks")
+    order = cur.fetchone()[0]
+    cur.execute("INSERT INTO unclassified_tasks (\"order\", content) VALUES (%s, %s)", (order, content))
+    conn.commit()
+    return jsonify({'status': 'unclassified task added'})
 
 
 # ---------------- GREEN NOTE SYSTEM ----------------

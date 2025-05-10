@@ -30,6 +30,7 @@ class _SectionFilePageState extends State<SectionFilePage> {
   @override
   void initState() {
     super.initState();
+    print('[SectionFilePage] initState: topicId=${widget.topicId}, fileName=${widget.fileName}, section=${widget.section}');
     _loadMetadata();
   }
 
@@ -156,53 +157,94 @@ class _SectionFilePageState extends State<SectionFilePage> {
   }
 
   Widget _buildContent() {
-    if (widget.section == 'docs') {
-      return ListView.builder(
-        itemCount: content.length,
-        itemBuilder: (_, i) => ListTile(
-          title: Text(content[i]['text']),
-          subtitle: Text(content[i]['date']),
-          trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => _removeEntry(i)),
-        ),
-      );
-    } else if (widget.section == 'tasks') {
-      return ListView.builder(
-        itemCount: content.length,
-        itemBuilder: (_, i) {
-          final task = content[i];
-          final isDone = task['done'] == true;
-          return GestureDetector(
-            onTap: () => _toggleDone(i),
-            onSecondaryTap: () => _removeEntry(i),
-            child: ListTile(
-              title: Text(
-                task['text'],
-                style: TextStyle(
-                  decoration: isDone ? TextDecoration.lineThrough : null,
-                  color: isDone ? Colors.grey : null,
+    return ReorderableListView(
+      onReorder: (oldIndex, newIndex) {
+        if (newIndex > oldIndex) newIndex--;
+        setState(() {
+          final item = content.removeAt(oldIndex);
+          content.insert(newIndex, item);
+        });
+      },
+      children: [
+        for (int i = 0; i < content.length; i++)
+          Container(
+            key: ValueKey(content[i]),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  (widget.section == 'plans')
+                      ? (useNumbers ? '${i + 1}.' : '•')
+                      : '•',
+                  style: TextStyle(fontSize: 16),
                 ),
-              ),
-              trailing: Icon(
-                isDone ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isDone ? Colors.green : null,
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController.fromValue(
+                      TextEditingValue(
+                        text: content[i]['text'],
+                        selection: TextSelection.collapsed(
+                          offset: content[i]['text'].length,
+                        ),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      content[i]['text'] = val;
+                    },
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    style: TextStyle(
+                      fontSize: 16,
+                      decoration: (widget.section == 'tasks' && content[i]['done'] == true)
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: (widget.section == 'tasks' && content[i]['done'] == true)
+                          ? Colors.grey
+                          : null,
+                    ),
+                    onTap: () {
+                      // Stop toggle-on-tap behavior
+                    },
+                  ),
+                ),
+                if (widget.section == 'docs')
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Text(
+                      content[i]['date'],
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                if (widget.section == 'tasks')
+                  IconButton(
+                    icon: Icon(
+                      content[i]['done'] == true
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: content[i]['done'] == true ? Colors.green : null,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        content[i]['done'] = !(content[i]['done'] == true);
+                      });
+                    },
+                  ),
+                IconButton(
+                  icon: Icon(Icons.delete),
+                  onPressed: () => _removeEntry(i),
+                ),
+              ],
             ),
-          );
-        },
-      );
-    } else {
-      return ListView.builder(
-        itemCount: content.length,
-        itemBuilder: (_, i) {
-          final prefix = useNumbers ? '${i + 1}.' : '•';
-          return ListTile(
-            title: Text('$prefix ${content[i]}'),
-            trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => _removeEntry(i)),
-          );
-        },
-      );
-    }
+          )
+      ],
+    );
   }
+
 
   @override
   void dispose() {
@@ -234,7 +276,7 @@ class _SectionFilePageState extends State<SectionFilePage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.refresh),
-                  onPressed: _loadMetadata,
+                  onPressed: _saveContent,
                 ),
               ],
             ),
