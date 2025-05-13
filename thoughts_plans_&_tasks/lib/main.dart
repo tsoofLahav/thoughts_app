@@ -6,10 +6,10 @@ import 'desktop/home_page.dart';
 import 'desktop/green_note_page.dart';
 import 'desktop/directories_page.dart';
 import 'desktop/task_page.dart';
-import 'desktop/daily_tasks_page.dart';
 import 'desktop/history_graph_page.dart';
 import 'desktop/control_page.dart';
 import 'desktop/green_note_history_page.dart';
+import 'desktop/tracking_page.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,8 +43,8 @@ void main(List<String> args) async {
         runApp(MaterialApp(home: TaskPage(), debugShowCheckedModeBanner: false));
         return;
 
-      case 'daily_tasks':
-        runApp(MaterialApp(home: DailyTasksPage(), debugShowCheckedModeBanner: false));
+      case 'tracking':
+        runApp(MaterialApp(home: TrackingPage(), debugShowCheckedModeBanner: false));
         return;
 
       case 'data':

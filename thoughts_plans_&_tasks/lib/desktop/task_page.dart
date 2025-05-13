@@ -80,6 +80,16 @@ class _TaskPageState extends State<TaskPage> {
     );
 
     if (result != null && result.isNotEmpty) {
+      final exists = sectionTasks['לא ממוין']!
+          .any((t) => t['content'] == result);
+
+      if (exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('המשימה כבר קיימת')),
+        );
+        return;
+      }
+
       await http.post(
         Uri.parse('$backendUrl/add_unclassified'),
         headers: {'Content-Type': 'application/json'},
@@ -91,56 +101,71 @@ class _TaskPageState extends State<TaskPage> {
 
 
   Future<void> _moveTask(Map<String, dynamic> task, String toSection, int newOrder) async {
+    if (task.containsKey('file_name')) {
+      await _moveRegularTask(task, toSection, newOrder);
+    } else {
+      await _moveUnclassifiedTask(task, newOrder);
+    }
+  }
+
+  Future<void> _moveRegularTask(Map<String, dynamic> task, String toSection, int newOrder) async {
     final fromSection = task['section'];
 
-    if (fromSection != toSection){
-      if (fromSection == 'לא ממוין' || toSection == 'לא ממוין') {
-        return;
-      }
-    }
-
     setState(() {
-      sectionTasks[fromSection]?.remove(task);
+      sectionTasks[fromSection]?.removeWhere((t) =>
+        t['file_name'] == task['file_name'] &&
+        t['topic_id'] == task['topic_id']
+      );
       final targetList = sectionTasks[toSection]!;
       final clampedIndex = newOrder.clamp(0, targetList.length);
       targetList.insert(clampedIndex, task);
       task['section'] = toSection;
     });
 
-    if (toSection == 'לא ממוין') {
-      final reordered = sectionTasks['לא ממוין']!
-          .asMap()
-          .entries
-          .map((entry) => {
-            'content': entry.value['content'],
-            'order': entry.key,
-          })
-          .toList();
+    final reordered = sectionTasks[toSection]!
+      .asMap()
+      .entries
+      .map((entry) => {
+        'topic_id': entry.value['topic_id'],
+        'file_name': entry.value['file_name'],
+        'order': entry.key,
+        'section': toSection,
+      })
+      .toList();
 
-      await http.post(
-        Uri.parse('$backendUrl/reorder_unclassified'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'tasks': reordered}),
-      );
-    } else {
-      final reordered = sectionTasks[toSection]!
-          .asMap()
-          .entries
-          .map((entry) => {
-            'topic_id': entry.value['topic_id'],
-            'file_name': entry.value['file_name'],
-            'order': entry.key,
-            'section': toSection,
-          })
-          .toList();
-
-      await http.post(
-        Uri.parse('$backendUrl/reorder_task'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'tasks': reordered}),
-      );
-    }
+    await http.post(
+      Uri.parse('$backendUrl/reorder_task'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'tasks': reordered}),
+    );
   }
+
+  Future<void> _moveUnclassifiedTask(Map<String, dynamic> task, int newOrder) async {
+    setState(() {
+      sectionTasks['לא ממוין']?.removeWhere((t) => t['content'] == task['content']);
+      final list = sectionTasks['לא ממוין']!;
+      final clampedIndex = newOrder.clamp(0, list.length);
+      list.insert(clampedIndex, task);
+    });
+
+    final reordered = sectionTasks['לא ממוין']!
+      .asMap()
+      .entries
+      .map((entry) => {
+        'content': entry.value['content'],
+        'order': entry.key,
+      })
+      .toList();
+
+    await http.post(
+      Uri.parse('$backendUrl/reorder_unclassified'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'tasks': reordered}),
+    );
+  }
+
+
+
 
   void _showTaskContextMenu(Offset position, Map task) async {
     final selected = await showMenu(
@@ -153,20 +178,24 @@ class _TaskPageState extends State<TaskPage> {
     );
 
     if (selected == 'delete') {
-      final section = task['section'];
-      if (section == 'לא ממוין') {
-        await http.post(
-          Uri.parse('$backendUrl/delete_unclassified'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'content': task['content']}),
-        );
-      } else {
+      if (task.containsKey('file_name')) {
+        // regular task → delete from both tables
         await http.post(
           Uri.parse('$backendUrl/delete_task_and_file'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'topic_id': task['topic_id'],
             'file_name': task['file_name'],
+          }),
+        );
+      } else {
+        // unclassified task
+        await http.post(
+          Uri.parse('$backendUrl/delete_unclassified'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'content': task['content'],
+            'order': task['order'],
           }),
         );
       }
@@ -176,7 +205,7 @@ class _TaskPageState extends State<TaskPage> {
 
 
   Widget _buildTaskTile(Map<String, dynamic> task) {
-    final color = topicColors[task['topic_id']] ?? Colors.teal;
+    final color = topicColors[task['topic_id']] ?? const Color.fromARGB(255, 164, 219, 213);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: GestureDetector(
@@ -186,7 +215,7 @@ class _TaskPageState extends State<TaskPage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
             task['content'] ?? task['file_name'],
-            style: TextStyle(color: Colors.white, fontSize: 13),
+            style: TextStyle(color: const Color.fromARGB(255, 39, 39, 39), fontSize: 13),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -201,7 +230,12 @@ class _TaskPageState extends State<TaskPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.teal.shade50,
-        appBar: AppBar(title: Text('משימות', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        appBar: AppBar(
+          title: Text(
+            'משימות',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
         body: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -209,10 +243,17 @@ class _TaskPageState extends State<TaskPage> {
             textDirection: TextDirection.rtl,
             children: sections.reversed.map((section) {
               final tasks = sectionTasks[section] ?? [];
-              return Padding(
+              final isUnclassified = section == 'לא ממוין';
+
+              return Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: Colors.teal.shade200, width: 1), // ✅ separator line
+                  ),
+                ),
                 padding: const EdgeInsets.all(6.0),
                 child: SizedBox(
-                  width: 200,
+                  width: isUnclassified ? 200 : 160, // ✅ narrower for all except unclassified
                   child: DragTarget<Map<String, dynamic>>(
                     onWillAccept: (data) => true,
                     onAcceptWithDetails: (details) {
@@ -226,7 +267,7 @@ class _TaskPageState extends State<TaskPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(section, style: TextStyle(fontWeight: FontWeight.bold)),
-                            if (section == 'לא ממוין')
+                            if (isUnclassified)
                               IconButton(
                                 icon: Icon(Icons.add),
                                 iconSize: 20,
@@ -241,9 +282,15 @@ class _TaskPageState extends State<TaskPage> {
                         ...tasks.asMap().entries.map((entry) {
                           final index = entry.key;
                           final task = entry.value;
+
+                          final taskColor = isUnclassified
+                            ? Colors.teal.shade200.withOpacity(0.7) // ✅ teal-grey frame for unclassified
+                            : topicColors[task['topic_id']] ?? Colors.teal;
+
                           return DragTarget<Map<String, dynamic>>(
                             onWillAccept: (data) => true,
-                            onAcceptWithDetails: (details) => _moveTask(details.data, section, index),
+                            onAcceptWithDetails: (details) =>
+                                _moveTask(details.data, section, index),
                             builder: (_, __, ___) => Draggable(
                               data: task,
                               feedback: Material(
@@ -251,11 +298,20 @@ class _TaskPageState extends State<TaskPage> {
                                 child: Container(
                                   width: 180,
                                   padding: EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: topicColors[task['topic_id']] ?? Colors.teal, borderRadius: BorderRadius.circular(16)),
-                                  child: Text(task['content'] ?? task['file_name'], style: TextStyle(color: Colors.white)),
+                                  decoration: BoxDecoration(
+                                    color: taskColor,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Text(
+                                    task['content'] ?? task['file_name'],
+                                    style: TextStyle(color: Colors.white),
+                                  ),
                                 ),
                               ),
-                              childWhenDragging: Opacity(opacity: 0.5, child: _buildTaskTile(task)),
+                              childWhenDragging: Opacity(
+                                opacity: 0.5,
+                                child: _buildTaskTile(task),
+                              ),
                               child: _buildTaskTile(task),
                             ),
                           );
@@ -271,4 +327,5 @@ class _TaskPageState extends State<TaskPage> {
       ),
     );
   }
+
 }

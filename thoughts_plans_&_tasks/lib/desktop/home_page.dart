@@ -6,7 +6,7 @@ import 'green_note_page.dart';
 import 'directories_page.dart';
 import 'section_file_page.dart';
 import 'task_page.dart';
-import 'daily_tasks_page.dart';
+import 'tracking_page.dart';
 import 'history_graph_page.dart';
 import 'control_page.dart';
 import 'green_note_history_page.dart';
@@ -32,7 +32,7 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   final List<String> topIcons = [
     'assets/green_note.png',
-    'assets/daily_tasks.png',
+    'assets/tracking.png',
     'assets/tasks.png',
     'assets/control.png',
     'assets/data.png',
@@ -260,7 +260,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     if (iconPath == 'assets/green_note.png') page = 'green_note';
     if (iconPath == 'assets/directories.png') page = 'directories';
     if (iconPath == 'assets/tasks.png') page = 'tasks';
-    if (iconPath == 'assets/daily_tasks.png') page = 'daily_tasks';
+    if (iconPath == 'assets/tracking.png') page = 'tracking';
     if (iconPath == 'assets/data.png') page = 'data';
     if (iconPath == 'assets/history.png') page = 'green_note_history';
     if (iconPath == 'assets/control.png') page = 'control';
@@ -279,7 +279,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         case 'green_note': destination = GreenNotePage(); break;
         case 'directories': destination = DirectoriesPage(); break;
         case 'tasks': destination = TaskPage(); break;
-        case 'daily_tasks': destination = DailyTasksPage(); break;
+        case 'tracking': destination = TrackingPage(); break;
         case 'data': destination = HistoryPage(); break;
         case 'green_note_history': destination = GreenNoteHistoryPage(); break;
         case 'control': destination = ControlPage(); break;

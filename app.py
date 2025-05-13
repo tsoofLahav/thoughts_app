@@ -3,6 +3,7 @@ from flask_cors import CORS
 import psycopg2
 import os
 from flask import jsonify, json
+from datetime import datetime, date
 
 
 app = Flask(__name__)
@@ -532,6 +533,99 @@ def delete_task_and_file():
     conn.commit()
     return jsonify({'status': 'deleted'})
 
+# ---------------- TRACKING ----------------
+@app.route('/get_food')
+def get_food():
+    date = request.args.get('date')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name, calories, protein FROM food WHERE date = %s", (date,))
+    rows = cur.fetchall()
+    result = [{'name': r[0], 'calories': r[1], 'protein': r[2]} for r in rows]
+    return jsonify(result)
+
+@app.route('/add_food', methods=['POST'])
+def add_food():
+    data = request.json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO food (date, name, calories, protein) VALUES (%s, %s, %s, %s)",
+        (data['date'], data['name'], data['calories'], data['protein'])
+    )
+    conn.commit()
+    return jsonify({'status': 'success'})
+
+@app.route('/get_tracking')
+def get_tracking():
+    reset_tracking_daily()  # call it here automatically
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name, time, amount, done, content FROM tracking")
+    rows = cur.fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            'name': r[0],
+            'time': r[1],
+            'amount': r[2],
+            'done': r[3],
+            'content': r[4]
+        })
+    return jsonify(result)
+
+@app.route('/reset_tracking_daily')
+def reset_tracking_daily():
+    today_str = date.today().strftime('%Y-%m-%d')
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Get all items where time < today
+    cur.execute("SELECT name, time FROM tracking")
+    rows = cur.fetchall()
+
+    for name, t in rows:
+        if t != today_str:
+            cur.execute("UPDATE tracking SET done = 0, time = %s WHERE name = %s", (today_str, name))
+
+    conn.commit()
+    return jsonify({'status': 'reset done where needed'})
+
+
+@app.route('/update_tracking_done', methods=['POST'])
+def update_tracking_done():
+    data = request.json
+    name = data['name']
+    index = data['index']
+    checked = data['checked']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT done FROM tracking WHERE name = %s", (name,))
+    current_done = cur.fetchone()[0] or 0
+
+    new_done = current_done + 1 if checked else current_done - 1
+    new_done = max(0, new_done)  # prevent negative
+
+    cur.execute("UPDATE tracking SET done = %s WHERE name = %s", (new_done, name))
+    conn.commit()
+    return jsonify({'status': 'updated'})
+
+
+@app.route('/add_tracking_item', methods=['POST'])
+def add_tracking_item():
+    data = request.json
+    name = data['name']
+    amount = data['amount']
+    content = data['content']
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO tracking (name, time, amount, done, content) VALUES (%s, %s, %s, %s, %s)",
+        (name, datetime.now().strftime('%Y-%m-%d'), amount, 0, content)
+    )
+    conn.commit()
+    return jsonify({'status': 'added'})
 
 
 # ---------------- GREEN NOTE SYSTEM ----------------
