@@ -628,6 +628,29 @@ def add_tracking_item():
     return jsonify({'status': 'added'})
 
 
+@app.route('/delete_food', methods=['POST'])
+def delete_food():
+    data = request.json
+    name = data['name']
+    date_ = data['date']
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM food WHERE name = %s AND date = %s", (name, date_))
+    conn.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/delete_tracking_item', methods=['POST'])
+def delete_tracking_item():
+    data = request.json
+    name = data['name']
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM tracking WHERE name = %s", (name,))
+    conn.commit()
+    return jsonify({'status': 'deleted'})
+
+
 # ---------------- GREEN NOTE SYSTEM ----------------
 
 # Save or update list of topics
