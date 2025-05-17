@@ -306,9 +306,22 @@ def get_files(topic_id):
 @app.route('/files/delete', methods=['POST'])
 def delete_file():
     data = request.get_json()
+    topic_id = data['topic_id']
+    name = data['name']
+    section = data['section']
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM files WHERE topic_id = %s AND name = %s", (data['topic_id'], data['name']))
+
+    # Delete from files table
+    cur.execute("DELETE FROM files WHERE topic_id = %s AND name = %s", (topic_id, name))
+
+    # Delete from tasks or control table
+    if section == 'tasks':
+        cur.execute("DELETE FROM tasks WHERE topic_id = %s AND file_name = %s", (topic_id, name))
+    elif section in ['plans', 'docs']:
+        cur.execute("DELETE FROM control WHERE topic_id = %s AND name_file = %s", (topic_id, name))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -318,30 +331,46 @@ def delete_file():
 @app.route('/files/add', methods=['POST'])
 def add_file():
     data = request.get_json()
+    section = data['section']
+    topic_id = data['topic_id']
+    name = data['name']
+
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # Add to files table
     cur.execute("""
         INSERT INTO files (topic_id, section, name, linked, content)
         VALUES (%s, %s, %s, FALSE, '[]')
-    """, (data['topic_id'], data['section'], data['name']))
-    conn.commit()
+    """, (topic_id, section, name))
 
-    # If this is a task section, also add to the tasks table
-    if data['section'] == 'tasks':
+    # If this is a task section, add to tasks table
+    if section == 'tasks':
         task_cur = conn.cursor()
         task_cur.execute("SELECT COUNT(*) FROM tasks WHERE section = 'בהמשך'")
         order = task_cur.fetchone()[0]
         task_cur.execute("""
             INSERT INTO tasks (topic_id, file_name, section, "order")
             VALUES (%s, %s, 'בהמשך', %s)
-        """, (data['topic_id'], data['name'], order))
-        conn.commit()
+        """, (topic_id, name, order))
         task_cur.close()
 
+    # If plans/docs, add to control table
+    elif section in ['plans', 'docs']:
+        is_plan = (section == 'plans')
+        control_cur = conn.cursor()
+        control_cur.execute("SELECT COUNT(*) FROM control WHERE is_plan = %s AND modification_alert = FALSE", (is_plan,))
+        order_index = control_cur.fetchone()[0]
+        control_cur.execute("""
+            INSERT INTO control (name_file, topic_id, is_plan, order_index, modification_alert)
+            VALUES (%s, %s, %s, %s, FALSE)
+        """, (name, topic_id, is_plan, order_index))
+        control_cur.close()
+
+    conn.commit()
     cur.close()
     conn.close()
     return '', 200
-
 
 
 # ----------FILES CONTENT ----------
@@ -649,6 +678,48 @@ def delete_tracking_item():
     cur.execute("DELETE FROM tracking WHERE name = %s", (name,))
     conn.commit()
     return jsonify({'status': 'deleted'})
+
+
+# ---------- CONTROL ----------
+
+@app.route('/get_control_files')
+def get_control_files():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name_file, topic_id, is_plan, order_index, modification_alert FROM control")
+    rows = cur.fetchall()
+    result = [
+        {
+            'name_file': r[0],
+            'topic_id': r[1],
+            'is_plan': r[2],
+            'order_index': r[3],
+            'modification_alert': r[4]
+        }
+        for r in rows
+    ]
+    return jsonify(result)
+
+
+@app.route('/update_control_file', methods=['POST'])
+def update_control_file():
+    data = request.json
+    name_file = data['name_file']
+    topic_id = data['topic_id']
+    is_plan = data['is_plan']
+    modification_alert = data['modification_alert']
+    order_index = data['order_index']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """UPDATE control
+           SET is_plan = %s, modification_alert = %s, order_index = %s
+           WHERE name_file = %s AND topic_id = %s""",
+        (is_plan, modification_alert, order_index, name_file, topic_id)
+    )
+    conn.commit()
+    return jsonify({'status': 'updated'})
 
 
 # ---------------- GREEN NOTE SYSTEM ----------------
